@@ -1,0 +1,112 @@
+{
+    "Nodes": [
+        {
+            "IP": "10.178.33.22",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "51",
+            "description": "闵浦三桥 闵浦三桥汇聚交换机1台智能终端 由北向南",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.33.23",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "52",
+            "description": "闵浦三桥 闵浦三桥汇聚交换机1台建模单元 由北向南",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.33.28",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "53",
+            "description": "闵浦三桥 闵浦三桥汇聚交换机1台智能终端 由南向北",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.33.29",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "54",
+            "description": "闵浦三桥 闵浦三桥汇聚交换机1台建模单元 由南向北",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.60.42.230",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "55",
+            "description": "马卫线 金山大道秋实路西进口汇聚交换机1台智能终端 由西向东",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.60.42.231",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "56",
+            "description": "马卫线 金山大道秋实路西进口汇聚交换机1台建模单元 由西向东",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.60.42.234",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "57",
+            "description": "马卫线 金山大道秋实路西进口汇聚交换机1台智能终端 由东向西",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.60.42.235",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "58",
+            "description": "马卫线 金山大道秋实路西进口汇聚交换机1台建模单元 由东向西",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.31.14",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "59",
+            "description": "松浦三桥 松浦三桥汇聚交换机1台智能终端 由北向南",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.31.15",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "60",
+            "description": "松浦三桥 松浦三桥汇聚交换机1台建模单元 由北向南",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.31.20",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "61",
+            "description": "松浦三桥 松浦三桥汇聚交换机1台智能终端 由南向北",
+            "client": "平可行"
+        },
+        {
+            "IP": "10.178.31.21",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "62",
+            "description": "松浦三桥 松浦三桥汇聚交换机1台建模单元 由南向北",
+            "client": "平可行"
+        }
+    ]
+}
