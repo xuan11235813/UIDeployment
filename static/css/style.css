@@ -32,7 +32,7 @@ header {
 }
 
 header h1 {
-    font-size: 1.8em;
+    font-size: 1.4em;
     margin-bottom: 5px;
     background: linear-gradient(90deg, #00d4ff, #00ff88);
     -webkit-background-clip: text;
@@ -42,7 +42,7 @@ header h1 {
 
 header p {
     color: #888;
-    font-size: 0.9em;
+    font-size: 0.8em;
 }
 
 .main-content {
@@ -63,9 +63,9 @@ header p {
 }
 
 .sidebar h2 {
-    font-size: 1.1em;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
+    font-size: 0.95em;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
     border-bottom: 2px solid #00d4ff;
     flex-shrink: 0;
 }
@@ -77,13 +77,13 @@ header p {
 }
 
 .group {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .group-header {
     background: rgba(0, 212, 255, 0.1);
-    padding: 10px 12px;
-    border-radius: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
@@ -96,21 +96,21 @@ header p {
 }
 
 .group-header h3 {
-    font-size: 0.9em;
+    font-size: 0.8em;
     font-weight: 600;
 }
 
 .group-count {
     background: #00d4ff;
     color: #1a1a2e;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.75em;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 0.65em;
     font-weight: bold;
 }
 
 .group-nodes {
-    margin-top: 8px;
+    margin-top: 5px;
     display: none;
 }
 
@@ -120,10 +120,10 @@ header p {
 
 .node-item {
     background: rgba(255, 255, 255, 0.03);
-    padding: 10px 12px;
-    margin: 4px 0;
-    border-radius: 6px;
-    border-left: 3px solid transparent;
+    padding: 6px 8px;
+    margin: 2px 0;
+    border-radius: 5px;
+    border-left: 2px solid transparent;
     transition: all 0.3s ease;
 }
 
@@ -144,38 +144,38 @@ header p {
 .node-id {
     font-weight: bold;
     color: #00d4ff;
-    font-size: 0.85em;
+    font-size: 0.75em;
 }
 
 .node-desc {
-    font-size: 0.75em;
+    font-size: 0.65em;
     color: #aaa;
-    margin-top: 3px;
+    margin-top: 2px;
 }
 
 .node-ip {
-    font-size: 0.7em;
+    font-size: 0.6em;
     color: #666;
-    margin-top: 2px;
+    margin-top: 1px;
 }
 
 .node-actions {
     display: flex;
-    gap: 6px;
-    margin-top: 8px;
+    gap: 4px;
+    margin-top: 6px;
 }
 
 .btn {
-    padding: 6px 12px;
+    padding: 4px 8px;
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 0.8em;
+    font-size: 0.7em;
     font-weight: 500;
     transition: all 0.3s ease;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }
 
 .btn-primary {
@@ -230,45 +230,103 @@ header p {
     min-height: 0;
 }
 
+/* Tab Navigation */
+.tab-navigation {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 8px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px 8px 0 0;
+    color: #888;
+    font-size: 0.8em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.tab-btn.active {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: #00d4ff;
+    color: #00d4ff;
+}
+
+/* Tab Content */
+.tab-content {
+    display: none !important;
+    flex: 1;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.tab-content.active {
+    display: flex !important;
+}
+
 .panel {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
+}
+
+/* Fixed height panels with inner scrollbar for Tab 1 */
+.fixed-height {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: hidden;
 }
 
 #terminal-panel {
-    flex: 1;
+    flex: 0 0 55%;
     min-height: 200px;
 }
 
 #file-panel {
-    flex: 1;
-    min-height: 200px;
+    flex: 1 1 45%;
+    min-height: 180px;
+}
+
+/* LiDAR panel in Tab 2 */
+#lidar-panel {
+    flex: 0 0 auto;
 }
 
 .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 15px;
+    padding: 6px 10px;
     border-bottom: 1px solid #333;
     flex-shrink: 0;
 }
 
 .panel-header h2 {
-    font-size: 1em;
+    font-size: 0.85em;
 }
 
 #terminal-container {
     background: #0a0a0a;
-    border-radius: 8px;
+    border-radius: 6px;
     flex: 1;
-    margin: 10px;
+    margin: 6px;
     overflow: hidden;
     border: 1px solid #333;
-    padding: 8px;
+    padding: 4px;
     min-height: 0;
 }
 
@@ -284,15 +342,15 @@ header p {
     flex: 1;
     display: flex;
     flex-direction: column;
-    margin: 10px;
+    margin: 6px;
     min-height: 0;
 }
 
 .file-browser {
     flex: 1;
     background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    padding: 10px;
+    border-radius: 6px;
+    padding: 6px;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -300,19 +358,19 @@ header p {
 
 .path-bar {
     display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 6px;
     flex-shrink: 0;
 }
 
 .path-bar input {
     flex: 1;
-    padding: 8px 12px;
+    padding: 5px 8px;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid #333;
-    border-radius: 5px;
+    border-radius: 4px;
     color: #fff;
-    font-size: 0.85em;
+    font-size: 0.75em;
 }
 
 .path-bar input:focus {
@@ -324,18 +382,18 @@ header p {
     flex: 1;
     overflow-y: auto;
     background: rgba(0, 0, 0, 0.2);
-    border-radius: 5px;
-    padding: 8px;
+    border-radius: 4px;
+    padding: 5px;
     min-height: 0;
 }
 
 .file-item {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    margin: 2px 0;
+    padding: 5px 8px;
+    margin: 1px 0;
     background: rgba(255, 255, 255, 0.03);
-    border-radius: 5px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -345,9 +403,9 @@ header p {
 }
 
 .file-icon {
-    margin-right: 10px;
-    font-size: 1em;
-    width: 20px;
+    margin-right: 6px;
+    font-size: 0.85em;
+    width: 16px;
     text-align: center;
 }
 
@@ -361,41 +419,41 @@ header p {
 
 .file-name {
     flex: 1;
-    font-size: 0.85em;
+    font-size: 0.75em;
 }
 
 .file-size {
     color: #666;
-    font-size: 0.75em;
-    margin-right: 12px;
-    width: 70px;
+    font-size: 0.65em;
+    margin-right: 8px;
+    width: 60px;
     text-align: right;
 }
 
 .file-mtime {
     color: #555;
-    font-size: 0.7em;
-    width: 120px;
+    font-size: 0.6em;
+    width: 100px;
     text-align: right;
 }
 
 .file-actions {
     background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    padding: 10px;
-    margin-top: 10px;
+    border-radius: 6px;
+    padding: 6px;
+    margin-top: 6px;
     flex-shrink: 0;
 }
 
 .file-actions h3 {
-    margin-bottom: 10px;
-    font-size: 0.9em;
+    margin-bottom: 6px;
+    font-size: 0.75em;
     color: #00d4ff;
 }
 
 #upload-form {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
 }
 
@@ -467,6 +525,135 @@ header p {
     background: rgba(255, 255, 255, 0.3);
 }
 
+/* LiDAR Check Panel */
+#lidar-panel {
+    flex: 0 0 auto;
+    min-height: 180px;
+}
+
+.lidar-check-container {
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.lidar-info {
+    color: #888;
+    font-size: 0.85em;
+    text-align: center;
+}
+
+.lidar-info p {
+    margin: 0;
+}
+
+.lidar-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.lidar-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 15px 25px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 140px;
+    gap: 5px;
+}
+
+.lidar-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.lidar-btn-icon {
+    font-size: 1.8em;
+}
+
+.lidar-btn-label {
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+.lidar-btn-ip {
+    font-size: 0.75em;
+    opacity: 0.8;
+}
+
+.lidar-btn-gray {
+    background: linear-gradient(135deg, #4a4a4a, #333333);
+    color: #aaa;
+    border: 2px solid #555;
+}
+
+.lidar-btn-gray:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5a5a5a, #444444);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.lidar-btn-green {
+    background: linear-gradient(135deg, #00c853, #00a844);
+    color: #fff;
+    border: 2px solid #00ff88;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+}
+
+.lidar-btn-green:hover:not(:disabled) {
+    background: linear-gradient(135deg, #00e55a, #00b84d);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 255, 136, 0.4);
+}
+
+.lidar-btn-checking {
+    background: linear-gradient(135deg, #2196f3, #1976d2);
+    color: #fff;
+    border: 2px solid #64b5f6;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.lidar-status {
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 0.85em;
+    text-align: center;
+    display: none;
+}
+
+.lidar-status.success {
+    display: block;
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+    border: 1px solid #00ff88;
+}
+
+.lidar-status.error {
+    display: block;
+    background: rgba(255, 71, 87, 0.1);
+    color: #ff4757;
+    border: 1px solid #ff4757;
+}
+
 /* Responsive design */
 @media (max-width: 1024px) {
     .main-content {
@@ -480,5 +667,15 @@ header p {
 
     .right-panel {
         flex: 1;
+    }
+
+    .lidar-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .lidar-btn {
+        width: 100%;
+        max-width: 200px;
     }
 }

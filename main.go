@@ -69,6 +69,7 @@ func main() {
 	http.HandleFunc("/api/upload", uploadHandler)
 	http.HandleFunc("/api/download", downloadHandler)
 	http.HandleFunc("/api/list", listFilesHandler)
+	http.HandleFunc("/api/check-lidar", checkLidarHandler)
 
 	log.Println("Server starting on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -104,9 +105,46 @@ func loadConfig() error {
 	return nil
 }
 
+// getConfigPath tries to find the config file in multiple locations
+func getConfigPath(filename string) (string, error) {
+	// 1. Try current working directory
+	if _, err := os.Stat(filename); err == nil {
+		return filename, nil
+	}
+
+	// 2. Try executable directory
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		configPath := filepath.Join(execDir, filename)
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath, nil
+		}
+	}
+
+	// 3. Try /etc/lidarcontrol/ directory
+	etcPath := filepath.Join("../", filename)
+	if _, err := os.Stat(etcPath); err == nil {
+		return etcPath, nil
+	}
+
+	// 4. Try /home/pi/Desktop/lidarcontrol/ directory
+	homePath := filepath.Join("/home/pi/Desktop/lidarcontrol", filename)
+	if _, err := os.Stat(homePath); err == nil {
+		return homePath, nil
+	}
+
+	return "", fmt.Errorf("config file %s not found in any search path", filename)
+}
+
 // loadNodesFromFile reads nodes from a JSON file
 func loadNodesFromFile(filename string) ([]Node, error) {
-	file, err := os.Open(filename)
+	configPath, err := getConfigPath(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -610,6 +648,93 @@ func listFilesHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// checkLidarHandler checks connectivity to LiDAR devices from the edge box
+func checkLidarHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	nodeID := r.URL.Query().Get("nodeId")
+	lidarIP := r.URL.Query().Get("lidarIP")
+
+	if nodeID == "" || lidarIP == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "nodeId and lidarIP parameters required",
+		})
+		return
+	}
+
+	// Find the node
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+
+	if targetNode == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Node not found",
+		})
+		return
+	}
+
+	// Connect to SSH on the edge box
+	sshConfig := &ssh.ClientConfig{
+		User: targetNode.Username,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(targetNode.Password),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	client, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("SSH connection to edge box failed: %v", err),
+		})
+		return
+	}
+	defer client.Close()
+
+	// Create session to run ping command
+	session, err := client.NewSession()
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Session creation failed: %v", err),
+		})
+		return
+	}
+	defer session.Close()
+
+	// Use ping to check connectivity (send 1 packet, timeout 2 seconds)
+	cmd := fmt.Sprintf("ping -c 1 -W 2 %s", lidarIP)
+	err = session.Run(cmd)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("LiDAR %s is not reachable", lidarIP),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("LiDAR %s is reachable", lidarIP),
+	})
+}
+
 // indexHTML is the embedded HTML template
 const indexHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -623,48 +748,91 @@ const indexHTML = `<!DOCTYPE html>
 <body>
     <div class="container">
         <header>
-            <h1>🚗 Lidar Control Panel</h1>
+            <h1> Lidar Control Panel</h1>
             <p>Traffic Department Monitoring Center</p>
         </header>
 
         <div class="main-content">
+            <!-- Column 1: Node Groups (fixed width) -->
             <div class="sidebar">
                 <h2>Node Groups</h2>
                 <div id="groups-container"></div>
             </div>
 
+            <!-- Column 2: Node Operations with Tabs -->
             <div class="right-panel">
-                <div id="terminal-panel" class="panel">
-                    <div class="panel-header">
-                        <h2>SSH Terminal - <span id="terminal-node-name">Select a node</span></h2>
-                    </div>
-                    <div id="terminal-container"></div>
+                <!-- Tab Navigation -->
+                <div class="tab-navigation">
+                    <button class="tab-btn active" onclick="switchTab('terminal-file-tab')" id="tab-btn-terminal">SSH Terminal & File Manager</button>
+                    <button class="tab-btn" onclick="switchTab('lidar-tab')" id="tab-btn-lidar">LiDAR Operation</button>
                 </div>
 
-                <div id="file-panel" class="panel">
-                    <div class="panel-header">
-                        <h2>File Manager - <span id="file-node-name">Select a node</span></h2>
+                <!-- Tab 1: SSH Terminal and File Manager -->
+                <div id="terminal-file-tab" class="tab-content active">
+                    <div id="terminal-panel" class="panel fixed-height">
+                        <div class="panel-header">
+                            <h2>SSH Terminal - <span id="terminal-node-name">Select a node</span></h2>
+                        </div>
+                        <div id="terminal-container"></div>
                     </div>
-                    
-                    <div class="file-manager">
-                        <div class="file-browser">
-                            <div class="path-bar">
-                                <input type="text" id="current-path" value="~" placeholder="Enter path...">
-                                <button onclick="browsePath()" class="btn btn-primary">Go</button>
-                                <button onclick="goParent()" class="btn btn-secondary">↑ Parent</button>
-                            </div>
-                            <div id="file-list"></div>
+
+                    <div id="file-panel" class="panel fixed-height">
+                        <div class="panel-header">
+                            <h2>File Manager - <span id="file-node-name">Select a node</span></h2>
                         </div>
                         
-                        <div class="file-actions">
-                            <h3>Upload File</h3>
-                            <form id="upload-form" enctype="multipart/form-data">
-                                <input type="file" id="file-input" name="file" required>
-                                <input type="hidden" id="upload-node-id">
-                                <input type="hidden" id="upload-path">
-                                <button type="submit" class="btn btn-success">Upload</button>
-                            </form>
-                            <div id="upload-status"></div>
+                        <div class="file-manager">
+                            <div class="file-browser">
+                                <div class="path-bar">
+                                    <input type="text" id="current-path" value="~" placeholder="Enter path...">
+                                    <button onclick="browsePath()" class="btn btn-primary">Go</button>
+                                    <button onclick="goParent()" class="btn btn-secondary">↑ Parent</button>
+                                </div>
+                                <div id="file-list"></div>
+                            </div>
+                            
+                            <div class="file-actions">
+                                <h3>Upload File</h3>
+                                <form id="upload-form" enctype="multipart/form-data">
+                                    <input type="file" id="file-input" name="file" required>
+                                    <input type="hidden" id="upload-node-id">
+                                    <input type="hidden" id="upload-path">
+                                    <button type="submit" class="btn btn-success">Upload</button>
+                                </form>
+                                <div id="upload-status"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: LiDAR Operation -->
+                <div id="lidar-tab" class="tab-content">
+                    <div id="lidar-panel" class="panel">
+                        <div class="panel-header">
+                            <h2>LiDAR Connectivity Check - <span id="lidar-node-name">Select a node</span></h2>
+                        </div>
+                        <div class="lidar-check-container">
+                            <div class="lidar-info">
+                                <p>Test connectivity from edge box to LiDAR devices (192.168.80.x network)</p>
+                            </div>
+                            <div class="lidar-buttons">
+                                <button id="lidar-btn-1" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.6', 1)">
+                                    <span class="lidar-btn-icon">📡</span>
+                                    <span class="lidar-btn-label">LiDAR 1</span>
+                                    <span class="lidar-btn-ip">192.168.80.6</span>
+                                </button>
+                                <button id="lidar-btn-2" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.7', 2)">
+                                    <span class="lidar-btn-icon">📡</span>
+                                    <span class="lidar-btn-label">LiDAR 2</span>
+                                    <span class="lidar-btn-ip">192.168.80.7</span>
+                                </button>
+                                <button id="lidar-btn-3" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.8', 3)">
+                                    <span class="lidar-btn-icon">📡</span>
+                                    <span class="lidar-btn-label">LiDAR 3</span>
+                                    <span class="lidar-btn-ip">192.168.80.8</span>
+                                </button>
+                            </div>
+                            <div id="lidar-status" class="lidar-status"></div>
                         </div>
                     </div>
                 </div>

@@ -13,6 +13,39 @@ document.addEventListener('DOMContentLoaded', () => {
     initTerminal();
 });
 
+// Switch between tabs
+function switchTab(tabId) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+
+    // Remove active state from all tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Show the selected tab content
+    const tabContent = document.getElementById(tabId);
+    if (tabContent) {
+        tabContent.classList.add('active');
+    }
+
+    // Add active state to the clicked button
+    const buttonId = tabId === 'terminal-file-tab' ? 'tab-btn-terminal' : 'tab-btn-lidar';
+    const button = document.getElementById(buttonId);
+    if (button) {
+        button.classList.add('active');
+    }
+
+    // Refit terminal when switching to terminal tab
+    if (tabId === 'terminal-file-tab' && term && fitAddon) {
+        setTimeout(() => {
+            fitAddon.fit();
+        }, 100);
+    }
+}
+
 // Initialize empty terminal
 function initTerminal() {
     const terminalContainer = document.getElementById('terminal-container');
@@ -21,7 +54,7 @@ function initTerminal() {
     term = new Terminal({
         cursorBlink: true,
         cursorStyle: 'block',
-        fontSize: 14,
+        fontSize: 12,
         fontFamily: 'Courier New, Consolas, monospace',
         theme: {
             background: '#0a0a0a',
@@ -185,6 +218,8 @@ function selectNode(nodeId) {
         `Node #${node.nodeId} - ${node.description}`;
     document.getElementById('file-node-name').textContent =
         `Node #${node.nodeId} - ${node.description}`;
+    document.getElementById('lidar-node-name').textContent =
+        `Node #${node.nodeId} - ${node.description}`;
 
     // Connect SSH terminal
     connectTerminal(node);
@@ -192,6 +227,9 @@ function selectNode(nodeId) {
     // Load file manager
     document.getElementById('upload-node-id').value = nodeId;
     browsePath('~');
+
+    // Reset LiDAR buttons
+    resetLidarButtons();
 }
 
 // Connect SSH terminal using xterm.js
@@ -410,4 +448,64 @@ function setupUploadForm() {
             statusDiv.textContent = `Error: ${error.message}`;
         }
     });
+}
+
+// Check LiDAR connectivity
+async function checkLidar(lidarIP, buttonNum) {
+    if (!currentNode) {
+        const statusDiv = document.getElementById('lidar-status');
+        statusDiv.className = 'lidar-status error';
+        statusDiv.style.display = 'block';
+        statusDiv.textContent = 'Please select a node first';
+        return;
+    }
+
+    const btn = document.getElementById(`lidar-btn-${buttonNum}`);
+    const statusDiv = document.getElementById('lidar-status');
+
+    // Reset button state to checking
+    btn.classList.remove('lidar-btn-green', 'lidar-btn-gray');
+    btn.classList.add('lidar-btn-checking');
+    btn.disabled = true;
+
+    statusDiv.className = 'lidar-status';
+    statusDiv.style.display = 'block';
+    statusDiv.textContent = `Checking connectivity to ${lidarIP}...`;
+
+    try {
+        const response = await fetch(`/api/check-lidar?nodeId=${currentNode.nodeId}&lidarIP=${lidarIP}`);
+        const data = await response.json();
+
+        btn.classList.remove('lidar-btn-checking');
+        btn.disabled = false;
+
+        if (data.success) {
+            btn.classList.add('lidar-btn-green');
+            statusDiv.className = 'lidar-status success';
+            statusDiv.textContent = `✓ ${data.message}`;
+        } else {
+            btn.classList.add('lidar-btn-gray');
+            statusDiv.className = 'lidar-status error';
+            statusDiv.textContent = `✗ ${data.error}`;
+        }
+    } catch (error) {
+        btn.classList.remove('lidar-btn-checking');
+        btn.classList.add('lidar-btn-gray');
+        btn.disabled = false;
+        statusDiv.className = 'lidar-status error';
+        statusDiv.textContent = `Error: ${error.message}`;
+    }
+}
+
+// Reset LiDAR buttons when changing nodes
+function resetLidarButtons() {
+    for (let i = 1; i <= 3; i++) {
+        const btn = document.getElementById(`lidar-btn-${i}`);
+        btn.classList.remove('lidar-btn-green', 'lidar-btn-checking');
+        btn.classList.add('lidar-btn-gray');
+        btn.disabled = false;
+    }
+    const statusDiv = document.getElementById('lidar-status');
+    statusDiv.style.display = 'none';
+    statusDiv.textContent = '';
 }
