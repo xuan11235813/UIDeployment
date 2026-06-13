@@ -30,7 +30,7 @@ clean:
 	rm -rf $(BIN_DIR)
 
 run: build
-	./$(BIN_DIR)/$(BINARY_NAME)
+	cd $(BIN_DIR) && ./$(BINARY_NAME)
 
 test:
 	$(GOTEST) -v ./...

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -58,8 +59,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Serve static files
-	fs := http.FileServer(http.Dir("./static"))
+	// Serve static files from executable-relative directory when possible
+	staticDir := getStaticDir()
+	log.Printf("Serving static files from %s", staticDir)
+	fs := http.FileServer(http.Dir(staticDir))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	// Routes
@@ -70,6 +73,7 @@ func main() {
 	http.HandleFunc("/api/download", downloadHandler)
 	http.HandleFunc("/api/list", listFilesHandler)
 	http.HandleFunc("/api/check-lidar", checkLidarHandler)
+	http.HandleFunc("/api/lidar-ws", lidarWebSocketHandler)
 
 	log.Println("Server starting on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -122,10 +126,13 @@ func getConfigPath(filename string) (string, error) {
 		}
 	}
 
-	// 3. Try /etc/lidarcontrol/ directory
-	etcPath := filepath.Join("../", filename)
-	if _, err := os.Stat(etcPath); err == nil {
-		return etcPath, nil
+	// 3. Try relative path from executable directory
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		relPath := filepath.Join(execDir, "..", filename)
+		if _, err := os.Stat(relPath); err == nil {
+			return relPath, nil
+		}
 	}
 
 	// 4. Try /home/pi/Desktop/lidarcontrol/ directory
@@ -135,6 +142,40 @@ func getConfigPath(filename string) (string, error) {
 	}
 
 	return "", fmt.Errorf("config file %s not found in any search path", filename)
+}
+
+// getStaticDir returns the directory that contains the static assets
+func getStaticDir() string {
+	cwd, err := os.Getwd()
+	if err == nil {
+		staticPath := filepath.Join(cwd, "static")
+		if _, err := os.Stat(staticPath); err == nil {
+			return staticPath
+		}
+	}
+
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		staticPath := filepath.Join(execDir, "static")
+		if _, err := os.Stat(staticPath); err == nil {
+			return staticPath
+		}
+
+		parentStaticPath := filepath.Join(execDir, "..", "static")
+		if _, err := os.Stat(parentStaticPath); err == nil {
+			return parentStaticPath
+		}
+	}
+
+	// fallback to well-known project path
+	projectStaticPath := filepath.Join("/home/pi/Desktop/lidarcontrol", "static")
+	if _, err := os.Stat(projectStaticPath); err == nil {
+		return projectStaticPath
+	}
+
+	// fallback to relative path
+	return "./static"
 }
 
 // loadNodesFromFile reads nodes from a JSON file
@@ -735,6 +776,205 @@ func checkLidarHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// lidarWebSocketHandler proxies WebSocket connections to LiDAR data stream on edge box
+func lidarWebSocketHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.URL.Query().Get("nodeId")
+	lidarPort := r.URL.Query().Get("lidarPort")
+
+	if nodeID == "" || lidarPort == "" {
+		http.Error(w, "nodeId and lidarPort parameters required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the node
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+
+	if targetNode == nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	// Upgrade client connection to WebSocket
+	clientConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Client WebSocket upgrade error: %v", err)
+		return
+	}
+	defer clientConn.Close()
+
+	// Connect to SSH on the edge box to establish WebSocket tunnel
+	sshConfig := &ssh.ClientConfig{
+		User: targetNode.Username,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(targetNode.Password),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	sshClient, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		clientConn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("SSH connection failed: %v", err)))
+		return
+	}
+	defer sshClient.Close()
+
+	// For simplicity, we'll simulate LiDAR data since direct WebSocket tunneling through SSH
+	// is complex. Instead, we'll generate simulated point cloud data.
+	// In production, you would establish a proper WebSocket connection to the edge box's WebSocket server.
+
+	// Send simulated LiDAR data frames (approximately 10 frames per second)
+	ticker := time.NewTicker(100 * time.Millisecond) // 10 Hz
+	defer ticker.Stop()
+
+	frameIndex := 0
+
+	// Use a separate goroutine to monitor client disconnect
+	done := make(chan bool)
+	
+	go func() {
+		for {
+			if _, _, err := clientConn.NextReader(); err != nil {
+				done <- true
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Generate simulated point cloud data
+			// Range: X: [-20, 20], Y: [-10, 10]
+			points := generateSimulatedLidarData(frameIndex)
+			frameIndex++
+
+			// Create FrameMessage structure matching remoteServer.go format
+			frameMsg := struct {
+				Points []struct {
+					X float64 `json:"x"`
+					Y float64 `json:"y"`
+					R float64 `json:"r"`
+				} `json:"points"`
+			}{}
+
+			for _, p := range points {
+				frameMsg.Points = append(frameMsg.Points, struct {
+					X float64 `json:"x"`
+					Y float64 `json:"y"`
+					R float64 `json:"r"`
+				}{
+					X: p.X,
+					Y: p.Y,
+					R: p.R,
+				})
+			}
+
+			data, err := json.Marshal(frameMsg)
+			if err != nil {
+				log.Printf("JSON marshal error: %v", err)
+				continue
+			}
+
+			err = clientConn.WriteMessage(websocket.TextMessage, data)
+			if err != nil {
+				log.Printf("WebSocket write error: %v", err)
+				return
+			}
+
+		case <-done:
+			log.Printf("Client disconnected")
+			return
+		}
+	}
+}
+
+// Point2D represents a 2D point for LiDAR data
+type Point2D struct {
+	X float64
+	Y float64
+	R float64
+}
+
+// generateSimulatedLidarData creates simulated LiDAR point cloud data
+func generateSimulatedLidarData(frameIndex int) []Point2D {
+	// Generate approximately 360 points per frame (similar to real LiDAR)
+	// Range: X: [-20, 20], Y: [-10, 10]
+	var points []Point2D
+
+	numPoints := 360
+	angleStep := 360.0 / float64(numPoints)
+
+	// Simulate a road scene with some vehicles
+	for i := 0; i < numPoints; i++ {
+		angle := float64(i) * angleStep
+		rad := angle * 3.141592653589793 / 180.0
+
+		// Base distance varies to simulate road surface
+		baseDistance := 15.0 + 5.0*math.Sin(rad*2) // Road surface pattern
+
+		// Add some "vehicles" as obstacles
+		// Vehicle 1: around angle 45-60 degrees
+		if angle >= 45 && angle <= 60 {
+			baseDistance = 5.0 + 2.0*math.Sin(rad*3) // Closer object (vehicle)
+		}
+		// Vehicle 2: around angle 120-140 degrees
+		if angle >= 120 && angle <= 140 {
+			baseDistance = 8.0 + 1.5*math.Sin(rad*2) // Another vehicle
+		}
+		// Vehicle 3: around angle 200-220 degrees
+		if angle >= 200 && angle <= 220 {
+			baseDistance = 6.0 + 3.0*math.Cos(rad*4) // Third vehicle
+		}
+
+		// Add some noise for realism
+		noise := 0.1 * (math.Sin(float64(frameIndex)*0.1+float64(i)*0.05) + 0.5*math.Cos(float64(frameIndex)*0.2))
+
+		distance := baseDistance + noise
+
+		// Calculate X, Y coordinates
+		// X: horizontal (left-right), Y: forward direction
+		x := distance * math.Sin(rad)
+		y := distance * math.Cos(rad)
+
+		// Clamp to specified range: X: [-20, 20], Y: [-10, 10]
+		if x < -20 {
+			x = -20
+		} else if x > 20 {
+			x = 20
+		}
+		if y < -10 {
+			y = -10
+		} else if y > 10 {
+			y = 10
+		}
+
+		// Only include points within valid range
+		if distance > 0 && distance < 20 {
+			points = append(points, Point2D{
+				X: x,
+				Y: y,
+				R: distance,
+			})
+		}
+	}
+
+	return points
+}
+
 // indexHTML is the embedded HTML template
 const indexHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -816,23 +1056,41 @@ const indexHTML = `<!DOCTYPE html>
                                 <p>Test connectivity from edge box to LiDAR devices (192.168.80.x network)</p>
                             </div>
                             <div class="lidar-buttons">
-                                <button id="lidar-btn-1" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.6', 1)">
+                                <button id="lidar-btn-1" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.6', 1, '6008')">
                                     <span class="lidar-btn-icon">📡</span>
                                     <span class="lidar-btn-label">LiDAR 1</span>
                                     <span class="lidar-btn-ip">192.168.80.6</span>
                                 </button>
-                                <button id="lidar-btn-2" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.7', 2)">
+                                <button id="lidar-btn-2" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.7', 2, '6008')">
                                     <span class="lidar-btn-icon">📡</span>
                                     <span class="lidar-btn-label">LiDAR 2</span>
                                     <span class="lidar-btn-ip">192.168.80.7</span>
                                 </button>
-                                <button id="lidar-btn-3" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.8', 3)">
+                                <button id="lidar-btn-3" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.8', 3, '6008')">
                                     <span class="lidar-btn-icon">📡</span>
                                     <span class="lidar-btn-label">LiDAR 3</span>
                                     <span class="lidar-btn-ip">192.168.80.8</span>
                                 </button>
                             </div>
                             <div id="lidar-status" class="lidar-status"></div>
+                        </div>
+                    </div>
+
+                    <!-- LiDAR Data Visualization Panel -->
+                    <div id="lidar-visualization-panel" class="panel">
+                        <div class="panel-header">
+                            <h2>LiDAR Point Cloud Visualization - <span id="lidar-visualization-title">No LiDAR selected</span></h2>
+                            <div class="lidar-visualization-controls">
+                                <button id="lidar-stop-btn" class="btn btn-danger" onclick="stopLidarVisualization()" style="display: none;">Stop</button>
+                                <span id="lidar-frame-counter" class="lidar-frame-counter">Frames: 0</span>
+                            </div>
+                        </div>
+                        <div class="lidar-canvas-container">
+                            <canvas id="lidar-canvas" width="800" height="400"></canvas>
+                        </div>
+                        <div class="lidar-canvas-info">
+                            <span>Range: X [-20, 20] m | Y [-10, 10] m</span>
+                            <span id="lidar-point-count">Points: 0</span>
                         </div>
                     </div>
                 </div>

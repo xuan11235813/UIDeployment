@@ -1,0 +1,46 @@
+{
+    "Server": {
+        "Port": "1995",
+        "IpAddress": "44.114.12.43"
+    },
+    "Project": {
+        "ProjectNum": 15,
+        "ProjectName": "SHCityManage"
+    },
+    "LidarTypeVec": [
+        {
+            "LidarID": "1",
+            "Port": "6008",
+            "IpAddress": "192.168.80.6",
+            "LaneVec": [
+                {
+                    "LaneNum": 3,
+                    "LaneMinCoord": -3.0,
+                    "LaneMaxCoord": 0.0
+                },
+                {
+                    "LaneNum": 4,
+                    "LaneMinCoord": 0.0,
+                    "LaneMaxCoord": 3.0
+                }
+            ]
+        },
+        {
+            "LidarID": "2",
+            "Port": "6008",
+            "IpAddress": "192.168.80.7",
+            "LaneVec": [
+                {
+                    "LaneNum": 1,
+                    "LaneMinCoord": -3.0,
+                    "LaneMaxCoord": 0.0
+                },
+                {
+                    "LaneNum": 2,
+                    "LaneMinCoord": 0.0,
+                    "LaneMaxCoord": 3.0
+                }
+            ]
+        }
+    ]
+}

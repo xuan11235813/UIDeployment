@@ -654,6 +654,63 @@ header p {
     border: 1px solid #ff4757;
 }
 
+/* LiDAR Visualization Panel */
+#lidar-visualization-panel {
+    flex: 1;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.lidar-visualization-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lidar-frame-counter {
+    font-size: 0.75em;
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.lidar-canvas-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    margin: 6px;
+    padding: 10px;
+    min-height: 0;
+}
+
+#lidar-canvas {
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.lidar-canvas-info {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    margin: 6px;
+    font-size: 0.75em;
+    color: #888;
+}
+
+#lidar-point-count {
+    color: #00ff88;
+}
+
 /* Responsive design */
 @media (max-width: 1024px) {
     .main-content {
@@ -677,5 +734,10 @@ header p {
     .lidar-btn {
         width: 100%;
         max-width: 200px;
+    }
+
+    #lidar-canvas {
+        width: 100%;
+        height: auto;
     }
 }

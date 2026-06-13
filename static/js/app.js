@@ -6,11 +6,20 @@ let term = null;
 let fitAddon = null;
 let terminalDataDisposable = null;
 
+// LiDAR visualization state
+let lidarWebSocket = null;
+let lidarCanvas = null;
+let lidarCtx = null;
+let lidarFrameCount = 0;
+let currentLidarIP = null;
+let currentLidarPort = null;
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
     loadGroups();
     setupUploadForm();
     initTerminal();
+    initLidarCanvas();
 });
 
 // Switch between tabs
@@ -451,7 +460,7 @@ function setupUploadForm() {
 }
 
 // Check LiDAR connectivity
-async function checkLidar(lidarIP, buttonNum) {
+async function checkLidar(lidarIP, buttonNum, lidarPort) {
     if (!currentNode) {
         const statusDiv = document.getElementById('lidar-status');
         statusDiv.className = 'lidar-status error';
@@ -483,10 +492,16 @@ async function checkLidar(lidarIP, buttonNum) {
             btn.classList.add('lidar-btn-green');
             statusDiv.className = 'lidar-status success';
             statusDiv.textContent = `✓ ${data.message}`;
+
+            // Start LiDAR visualization when reachable
+            startLidarVisualization(lidarIP, lidarPort);
         } else {
             btn.classList.add('lidar-btn-gray');
             statusDiv.className = 'lidar-status error';
             statusDiv.textContent = `✗ ${data.error}`;
+
+            // Stop visualization if not reachable
+            stopLidarVisualization();
         }
     } catch (error) {
         btn.classList.remove('lidar-btn-checking');
@@ -494,6 +509,9 @@ async function checkLidar(lidarIP, buttonNum) {
         btn.disabled = false;
         statusDiv.className = 'lidar-status error';
         statusDiv.textContent = `Error: ${error.message}`;
+
+        // Stop visualization on error
+        stopLidarVisualization();
     }
 }
 
@@ -508,4 +526,207 @@ function resetLidarButtons() {
     const statusDiv = document.getElementById('lidar-status');
     statusDiv.style.display = 'none';
     statusDiv.textContent = '';
+
+    // Stop LiDAR visualization
+    stopLidarVisualization();
+}
+
+// Initialize LiDAR canvas
+function initLidarCanvas() {
+    lidarCanvas = document.getElementById('lidar-canvas');
+    if (lidarCanvas) {
+        lidarCtx = lidarCanvas.getContext('2d');
+        clearLidarCanvas();
+    }
+}
+
+// Clear LiDAR canvas and draw grid
+function clearLidarCanvas() {
+    if (!lidarCtx || !lidarCanvas) return;
+
+    const width = lidarCanvas.width;
+    const height = lidarCanvas.height;
+
+    // Clear canvas
+    lidarCtx.fillStyle = '#0a0a0a';
+    lidarCtx.fillRect(0, 0, width, height);
+
+    // Draw grid
+    lidarCtx.strokeStyle = '#333';
+    lidarCtx.lineWidth = 1;
+
+    // Range: X [-20, 20], Y [-10, 10]
+    // Scale: 20 pixels per meter for X, 20 pixels per meter for Y
+    const scaleX = width / 40; // 40 meters range
+    const scaleY = height / 20; // 20 meters range
+
+    // Draw vertical grid lines (X axis)
+    for (let x = -20; x <= 20; x += 2) {
+        const canvasX = (x + 20) * scaleX;
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(canvasX, 0);
+        lidarCtx.lineTo(canvasX, height);
+        lidarCtx.stroke();
+
+        // Draw X labels
+        lidarCtx.fillStyle = '#666';
+        lidarCtx.font = '10px Arial';
+        lidarCtx.fillText(`${x}m`, canvasX - 10, height - 5);
+    }
+
+    // Draw horizontal grid lines (Y axis)
+    for (let y = -10; y <= 10; y += 2) {
+        const canvasY = (10 - y) * scaleY;
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(0, canvasY);
+        lidarCtx.lineTo(width, canvasY);
+        lidarCtx.stroke();
+
+        // Draw Y labels
+        lidarCtx.fillStyle = '#666';
+        lidarCtx.font = '10px Arial';
+        lidarCtx.fillText(`${y}m`, 5, canvasY + 3);
+    }
+
+    // Draw center point (origin)
+    lidarCtx.fillStyle = '#00d4ff';
+    lidarCtx.beginPath();
+    lidarCtx.arc(20 * scaleX, 10 * scaleY, 5, 0, 2 * Math.PI);
+    lidarCtx.fill();
+
+    // Draw axes
+    lidarCtx.strokeStyle = '#00d4ff';
+    lidarCtx.lineWidth = 2;
+
+    // X axis (horizontal)
+    lidarCtx.beginPath();
+    lidarCtx.moveTo(0, 10 * scaleY);
+    lidarCtx.lineTo(width, 10 * scaleY);
+    lidarCtx.stroke();
+
+    // Y axis (vertical)
+    lidarCtx.beginPath();
+    lidarCtx.moveTo(20 * scaleX, 0);
+    lidarCtx.lineTo(20 * scaleX, height);
+    lidarCtx.stroke();
+}
+
+// Render LiDAR points on canvas
+function renderLidarPoints(points) {
+    if (!lidarCtx || !lidarCanvas) return;
+
+    clearLidarCanvas();
+
+    const width = lidarCanvas.width;
+    const height = lidarCanvas.height;
+
+    // Scale: X [-20, 20] -> [0, width], Y [-10, 10] -> [height, 0]
+    const scaleX = width / 40;
+    const scaleY = height / 20;
+
+    // Draw points
+    for (const point of points) {
+        // Convert coordinates to canvas coordinates
+        const canvasX = (point.x + 20) * scaleX;
+        const canvasY = (10 - point.y) * scaleY;
+
+        // Color based on distance (R value)
+        const distance = point.r;
+        let color;
+        if (distance < 5) {
+            color = '#ff4757'; // Red for close objects
+        } else if (distance < 10) {
+            color = '#ffc107'; // Yellow for medium distance
+        } else if (distance < 15) {
+            color = '#00ff88'; // Green for farther objects
+        } else {
+            color = '#00d4ff'; // Cyan for very far objects
+        }
+
+        // Draw point
+        lidarCtx.fillStyle = color;
+        lidarCtx.beginPath();
+        lidarCtx.arc(canvasX, canvasY, 2, 0, 2 * Math.PI);
+        lidarCtx.fill();
+    }
+
+    // Update point count
+    document.getElementById('lidar-point-count').textContent = `Points: ${points.length}`;
+}
+
+// Start LiDAR visualization
+function startLidarVisualization(lidarIP, lidarPort) {
+    if (!currentNode) {
+        alert('Please select a node first');
+        return;
+    }
+
+    // Stop existing visualization
+    stopLidarVisualization();
+
+    currentLidarIP = lidarIP;
+    currentLidarPort = lidarPort;
+
+    // Update title
+    document.getElementById('lidar-visualization-title').textContent = `LiDAR ${lidarIP} (Port: ${lidarPort})`;
+
+    // Show stop button
+    document.getElementById('lidar-stop-btn').style.display = 'inline-block';
+
+    // Reset frame count
+    lidarFrameCount = 0;
+
+    // Connect to WebSocket
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/lidar-ws?nodeId=${currentNode.nodeId}&lidarPort=${lidarPort}`;
+
+    lidarWebSocket = new WebSocket(wsUrl);
+
+    lidarWebSocket.onopen = () => {
+        console.log('LiDAR WebSocket connected');
+        clearLidarCanvas();
+    };
+
+    lidarWebSocket.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.points && Array.isArray(data.points)) {
+                renderLidarPoints(data.points);
+                lidarFrameCount++;
+                document.getElementById('lidar-frame-counter').textContent = `Frames: ${lidarFrameCount}`;
+            }
+        } catch (error) {
+            console.error('Error parsing LiDAR data:', error);
+        }
+    };
+
+    lidarWebSocket.onerror = (error) => {
+        console.error('LiDAR WebSocket error:', error);
+        document.getElementById('lidar-visualization-title').textContent = 'Connection Error';
+    };
+
+    lidarWebSocket.onclose = () => {
+        console.log('LiDAR WebSocket closed');
+        document.getElementById('lidar-stop-btn').style.display = 'none';
+    };
+}
+
+// Stop LiDAR visualization
+function stopLidarVisualization() {
+    if (lidarWebSocket) {
+        lidarWebSocket.close();
+        lidarWebSocket = null;
+    }
+
+    currentLidarIP = null;
+    currentLidarPort = null;
+
+    // Update UI
+    document.getElementById('lidar-visualization-title').textContent = 'No LiDAR selected';
+    document.getElementById('lidar-stop-btn').style.display = 'none';
+    document.getElementById('lidar-frame-counter').textContent = 'Frames: 0';
+    document.getElementById('lidar-point-count').textContent = 'Points: 0';
+
+    // Clear canvas
+    clearLidarCanvas();
 }
