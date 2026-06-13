@@ -741,3 +741,160 @@ header p {
         height: auto;
     }
 }
+
+/* Modal for editing config.json */
+.modal {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.modal-content {
+    background: #0f1724;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 1000px;
+    padding: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    color: #eaeef6;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.config-section {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.config-section h4 {
+    margin-bottom: 8px;
+    color: #00d4ff;
+    font-size: 0.95em;
+}
+
+.section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.config-section label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.8em;
+    color: #ccc;
+}
+
+.config-section input {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid #1d3346;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.config-section input:focus {
+    border-color: #00d4ff;
+    outline: none;
+}
+
+.lidar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.lidar-card {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.lidar-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.lidar-card-header h5 {
+    margin: 0;
+    font-size: 0.9em;
+    color: #ffffff;
+}
+
+.lidar-card-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.lane-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.lane-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+}
+
+.lane-row input {
+    width: 100%;
+}
+
+.lane-row button {
+    height: 34px;
+}
+
+.lidar-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.lidar-actions .btn {
+    padding: 6px 10px;
+    font-size: 0.8em;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}

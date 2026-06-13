@@ -25,6 +25,12 @@ build:
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_NAME) $(MAIN_FILE)
 
+# build remote server binary
+.PHONY: build-remote
+build-remote:
+	@mkdir -p $(BIN_DIR)
+	$(GOBUILD) -o $(BIN_DIR)/remoteServer ./remote/remoteServer.go
+
 clean:
 	$(GOCLEAN)
 	rm -rf $(BIN_DIR)

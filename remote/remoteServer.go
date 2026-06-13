@@ -867,8 +867,18 @@ func (w *EstimateWorker) StartWebsocketDirect(lidarProperty LidarItem) {
 	hub := newHub()
 	go hub.run()
 	go hub.startFrameConsumer(w.OutputDirectData)
-	http.HandleFunc("/ws", hub.wsHandler)
-	log.Fatal(http.ListenAndServe(":"+lidarProperty.Port, nil))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", hub.wsHandler)
+	portNum, _ := strconv.Atoi(lidarProperty.Port)
+	idNum, _ := strconv.Atoi(lidarProperty.LidarID)
+	portNum = portNum + idNum
+
+	server := &http.Server{
+		Addr:    ":" + strconv.Itoa(portNum),
+		Handler: mux,
+	}
+	log.Fatal(server.ListenAndServe())
 }
 
 func (w *EstimateWorker) VehicleCuts(lidarProperty LidarItem) {

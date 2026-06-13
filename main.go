@@ -9,7 +9,9 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -74,6 +76,9 @@ func main() {
 	http.HandleFunc("/api/list", listFilesHandler)
 	http.HandleFunc("/api/check-lidar", checkLidarHandler)
 	http.HandleFunc("/api/lidar-ws", lidarWebSocketHandler)
+	http.HandleFunc("/api/deploy", deployHandler)
+	http.HandleFunc("/api/deploy-check", deployCheckHandler)
+	http.HandleFunc("/api/deploy-config", deployConfigHandler)
 
 	log.Println("Server starting on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -142,6 +147,360 @@ func getConfigPath(filename string) (string, error) {
 	}
 
 	return "", fmt.Errorf("config file %s not found in any search path", filename)
+}
+
+// deployHandler builds the remoteServer binary for the target node's arch,
+// uploads it to the node, ensures /home/pi/lidarSystem exists, kills existing app, and starts it in a screen.
+func deployHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.URL.Query().Get("nodeId")
+	if nodeID == "" {
+		http.Error(w, "nodeId required", http.StatusBadRequest)
+		return
+	}
+
+	// find node
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+
+	if targetNode == nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	// connect via SSH to detect remote arch
+	sshConfig := &ssh.ClientConfig{
+		User:            targetNode.Username,
+		Auth:            []ssh.AuthMethod{ssh.Password(targetNode.Password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	sshClient, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("SSH dial failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sshClient.Close()
+
+	// run uname -m
+	session, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("SSH session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	out, err := session.CombinedOutput("uname -m")
+	session.Close()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("uname failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	arch := strings.TrimSpace(string(out))
+
+	// map arch to GOARCH/GOARM
+	goEnv := map[string]string{"GOOS": "linux"}
+	switch arch {
+	case "x86_64", "amd64":
+		goEnv["GOARCH"] = "amd64"
+	case "aarch64", "arm64":
+		goEnv["GOARCH"] = "arm64"
+	case "armv7l", "armv7":
+		goEnv["GOARCH"] = "arm"
+		goEnv["GOARM"] = "7"
+	case "i386", "i686":
+		goEnv["GOARCH"] = "386"
+	default:
+		goEnv["GOARCH"] = "amd64"
+	}
+
+	// ensure upload dir exists
+	cwd, _ := os.Getwd()
+	uploadDir := filepath.Join(cwd, "upload")
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to create upload dir: %v", err)})
+		return
+	}
+
+	// build binary locally
+	localBinary := filepath.Join(uploadDir, fmt.Sprintf("remoteServer-%s", goEnv["GOARCH"]))
+	buildCmd := exec.Command("go", "build", "-o", localBinary, "../remote/remoteServer.go")
+
+	// set env
+	env := os.Environ()
+	for k, v := range goEnv {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	buildCmd.Env = env
+	// set working dir so relative path resolves correctly
+	if cwd != "" {
+		buildCmd.Dir = cwd
+	}
+	buildOut, err := buildCmd.CombinedOutput()
+	if err != nil {
+		log.Printf("build failed: %v\noutput:\n%s", err, string(buildOut))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("build failed: %v", err), "output": string(buildOut)})
+		return
+	}
+
+	// prepare remote: create dir, kill existing app, cleanup screens
+	sess2, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	// command to create dir, kill old processes, and wipe screens
+	cmd := `mkdir -p /home/pi/lidarSystem && pkill -f app.lexe || true && pkill -f remoteServer || true && screen -wipe || true`
+	if err := sess2.Run(cmd); err != nil {
+		// non-fatal — log and continue
+		log.Printf("remote prep command returned: %v", err)
+	}
+	sess2.Close()
+
+	// upload binary via SFTP
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("sftp client failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sftpClient.Close()
+
+	remotePath := "/home/pi/lidarSystem/remoteServer"
+	srcFile, err := os.Open(localBinary)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("open local binary failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer srcFile.Close()
+
+	dstFile, err := sftpClient.Create(remotePath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("create remote file failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		dstFile.Close()
+		http.Error(w, fmt.Sprintf("upload failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	dstFile.Close()
+
+	// chmod +x
+	if err := sftpClient.Chmod(remotePath, 0755); err != nil {
+		log.Printf("chmod failed: %v", err)
+	}
+
+	// start in screen
+	sess3, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	startCmd := fmt.Sprintf("cd /home/pi/lidarSystem && screen -S lidarServer -dm ./remoteServer > remoteServer.log 2>&1")
+	if err := sess3.Run(startCmd); err != nil {
+		sess3.Close()
+		http.Error(w, fmt.Sprintf("failed to start remote server: %v", err), http.StatusInternalServerError)
+		return
+	}
+	sess3.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "arch": arch, "binary": localBinary})
+}
+
+// deployCheckHandler checks whether config.json exists on the remote node.
+func deployCheckHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.URL.Query().Get("nodeId")
+	if nodeID == "" {
+		http.Error(w, "nodeId required", http.StatusBadRequest)
+		return
+	}
+	// find node
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+	if targetNode == nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User:            targetNode.Username,
+		Auth:            []ssh.AuthMethod{ssh.Password(targetNode.Password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	sshClient, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("SSH dial failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sshClient.Close()
+
+	// check file existence
+	session, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer session.Close()
+	cmd := "test -f /home/pi/lidarSystem/config.json && echo exists || echo missing"
+	out, err := session.CombinedOutput(cmd)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("check failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s := strings.TrimSpace(string(out))
+	resp := map[string]interface{}{"configExists": false}
+	if s == "exists" {
+		resp["configExists"] = true
+	} else {
+		// load the local remote/config.json file as the default template
+		if templatePath := getLocalRemoteConfigPath(); templatePath != "" {
+			if data, err := os.ReadFile(templatePath); err == nil {
+				var template interface{}
+				if err := json.Unmarshal(data, &template); err == nil {
+					resp["template"] = template
+				}
+			}
+		}
+		if resp["template"] == nil {
+			resp["template"] = map[string]interface{}{
+				"Server": map[string]string{"Port": "6008", "IpAddress": "0.0.0.0"},
+				"Project": map[string]interface{}{"ProjectNum": 1, "ProjectName": "MyProject"},
+				"LidarTypeVec": []map[string]interface{}{
+					{"LidarID": "1", "Port": "6008", "IpAddress": "192.168.80.6", "LaneVec": []map[string]interface{}{{"LaneNum": 1, "LaneMinCoord": -4.0, "LaneMaxCoord": 4.0}}},
+				},
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func getLocalRemoteConfigPath() string {
+	paths := []string{}
+	if cwd, err := os.Getwd(); err == nil {
+		paths = append(paths, filepath.Join(cwd, "remote", "config.json"))
+	}
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		paths = append(paths, filepath.Join(execDir, "remote", "config.json"), filepath.Join(execDir, "..", "remote", "config.json"))
+	}
+	paths = append(paths, filepath.Join("/home/pi/Desktop/lidarControl", "remote", "config.json"))
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// deployConfigHandler writes provided config JSON to remote /home/pi/lidarSystem/config.json
+func deployConfigHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.URL.Query().Get("nodeId")
+	if nodeID == "" {
+		http.Error(w, "nodeId required", http.StatusBadRequest)
+		return
+	}
+	// read body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read body failed: %v", err), http.StatusBadRequest)
+		return
+	}
+	// validate JSON
+	var v interface{}
+	if err := json.Unmarshal(body, &v); err != nil {
+		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// find node
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+	if targetNode == nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User:            targetNode.Username,
+		Auth:            []ssh.AuthMethod{ssh.Password(targetNode.Password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	sshClient, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("SSH dial failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sshClient.Close()
+
+	// ensure dir exists
+	sess, _ := sshClient.NewSession()
+	_ = sess.Run("mkdir -p /home/pi/lidarSystem")
+	sess.Close()
+
+	// upload via sftp
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("sftp failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sftpClient.Close()
+
+	f, err := sftpClient.Create("/home/pi/lidarSystem/config.json")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("create failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if _, err := f.Write(body); err != nil {
+		f.Close()
+		http.Error(w, fmt.Sprintf("write failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	f.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // getStaticDir returns the directory that contains the static assets
@@ -832,74 +1191,75 @@ func lidarWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sshClient.Close()
 
-	// For simplicity, we'll simulate LiDAR data since direct WebSocket tunneling through SSH
-	// is complex. Instead, we'll generate simulated point cloud data.
-	// In production, you would establish a proper WebSocket connection to the edge box's WebSocket server.
+	// Attempt to connect directly to remote node's WebSocket server at /ws
+	// remote server uses base Port + LidarID to avoid port conflicts when multiple lidars share the same base port
+	lidarID := r.URL.Query().Get("lidarId")
+	var remotePort int
+	basePort, err := strconv.Atoi(lidarPort)
+	if err != nil {
+		clientConn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("invalid lidarPort: %v", err)))
+		return
+	}
+	idNum := 0
+	if lidarID != "" {
+		idNum, _ = strconv.Atoi(lidarID)
+	}
+	remotePort = basePort + idNum
+	remoteWSURL := fmt.Sprintf("ws://%s:%d/ws", targetNode.IP, remotePort)
+	dialer := websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 10 * time.Second,
+	}
 
-	// Send simulated LiDAR data frames (approximately 10 frames per second)
-	ticker := time.NewTicker(100 * time.Millisecond) // 10 Hz
-	defer ticker.Stop()
+	remoteConn, resp, err := dialer.Dial(remoteWSURL, nil)
+	if err != nil {
+		// If dial fails, inform the client and return
+		log.Printf("Failed to dial remote websocket %s: %v", remoteWSURL, err)
+		if resp != nil {
+			log.Printf("Remote response status: %s", resp.Status)
+		}
+		clientConn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Failed to connect to remote LiDAR websocket: %v", err)))
+		return
+	}
+	defer remoteConn.Close()
 
-	frameIndex := 0
+	// Proxy messages: remote -> client and client -> remote
+	proxyDone := make(chan struct{})
 
-	// Use a separate goroutine to monitor client disconnect
-	done := make(chan bool)
-	
+	// remote -> client
 	go func() {
+		defer func() { close(proxyDone) }()
 		for {
-			if _, _, err := clientConn.NextReader(); err != nil {
-				done <- true
+			mt, msg, err := remoteConn.ReadMessage()
+			if err != nil {
+				log.Printf("remote read error: %v", err)
+				return
+			}
+			if err := clientConn.WriteMessage(mt, msg); err != nil {
+				log.Printf("client write error: %v", err)
 				return
 			}
 		}
 	}()
 
-	for {
-		select {
-		case <-ticker.C:
-			// Generate simulated point cloud data
-			// Range: X: [-20, 20], Y: [-10, 10]
-			points := generateSimulatedLidarData(frameIndex)
-			frameIndex++
-
-			// Create FrameMessage structure matching remoteServer.go format
-			frameMsg := struct {
-				Points []struct {
-					X float64 `json:"x"`
-					Y float64 `json:"y"`
-					R float64 `json:"r"`
-				} `json:"points"`
-			}{}
-
-			for _, p := range points {
-				frameMsg.Points = append(frameMsg.Points, struct {
-					X float64 `json:"x"`
-					Y float64 `json:"y"`
-					R float64 `json:"r"`
-				}{
-					X: p.X,
-					Y: p.Y,
-					R: p.R,
-				})
-			}
-
-			data, err := json.Marshal(frameMsg)
+	// client -> remote (in case front-end sends control messages)
+	go func() {
+		for {
+			mt, msg, err := clientConn.ReadMessage()
 			if err != nil {
-				log.Printf("JSON marshal error: %v", err)
-				continue
-			}
-
-			err = clientConn.WriteMessage(websocket.TextMessage, data)
-			if err != nil {
-				log.Printf("WebSocket write error: %v", err)
+				// client disconnected or read error
+				remoteConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 				return
 			}
-
-		case <-done:
-			log.Printf("Client disconnected")
-			return
+			if err := remoteConn.WriteMessage(mt, msg); err != nil {
+				log.Printf("remote write error: %v", err)
+				return
+			}
 		}
-	}
+	}()
+
+	// Wait until proxying finishes (either direction closed)
+	<-proxyDone
 }
 
 // Point2D represents a 2D point for LiDAR data
@@ -1056,7 +1416,11 @@ const indexHTML = `<!DOCTYPE html>
                                 <p>Test connectivity from edge box to LiDAR devices (192.168.80.x network)</p>
                             </div>
                             <div class="lidar-buttons">
-                                <button id="lidar-btn-1" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.6', 1, '6008')">
+								<button id="deploy-btn" class="lidar-btn lidar-btn-deploy" onclick="deployWithConfigCheck()">
+									<span class="lidar-btn-icon">⬆️</span>
+									<span class="lidar-btn-label">Deploy</span>
+								</button>
+								<button id="lidar-btn-1" class="lidar-btn lidar-btn-gray" onclick="checkLidar('192.168.80.6', 1, '6008')">
                                     <span class="lidar-btn-icon">📡</span>
                                     <span class="lidar-btn-label">LiDAR 1</span>
                                     <span class="lidar-btn-ip">192.168.80.6</span>
@@ -1101,7 +1465,41 @@ const indexHTML = `<!DOCTYPE html>
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
-    <script src="/static/js/app.js"></script>
+	<!-- Configuration modal for editing remote config.json -->
+	<div id="config-modal" class="modal" style="display:none;">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h3>Edit Remote config.json</h3>
+				<button id="config-modal-close" class="btn btn-secondary">✖</button>
+			</div>
+			<div class="modal-body">
+				<form id="config-form">
+					<div class="config-section">
+						<h4>Server</h4>
+						<label>Port <input id="server-port" type="text" placeholder="6008"></label>
+						<label>IP Address <input id="server-ip" type="text" placeholder="0.0.0.0"></label>
+					</div>
+					<div class="config-section">
+						<h4>Project</h4>
+						<label>Project Number <input id="project-num" type="number" min="1"></label>
+						<label>Project Name <input id="project-name" type="text" placeholder="MyProject"></label>
+					</div>
+					<div class="config-section">
+						<div class="section-heading">
+							<h4>LiDAR Devices</h4>
+							<button id="add-lidar" type="button" class="btn btn-success">Add LiDAR</button>
+						</div>
+						<div id="lidar-list" class="lidar-list"></div>
+					</div>
+				</form>
+				<div class="modal-actions">
+					<button id="config-save" type="button" class="btn btn-success">Save & Upload</button>
+					<button id="config-cancel" type="button" class="btn btn-secondary">Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+	<script src="/static/js/app.js"></script>
 </body>
 </html>
 `

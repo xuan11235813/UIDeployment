@@ -459,6 +459,61 @@ function setupUploadForm() {
     });
 }
 
+// Deploy current node: build/upload/start remoteServer on the node
+async function deployCurrentNode() {
+    if (!currentNode) {
+        alert('Select a node first');
+        return;
+    }
+
+    const deployBtn = document.getElementById('deploy-btn');
+    if (deployBtn) {
+        deployBtn.disabled = true;
+        deployBtn.textContent = 'Deploying...';
+    }
+
+    try {
+        const resp = await fetch(`/api/deploy?nodeId=${encodeURIComponent(currentNode.nodeId)}`);
+        const txt = await resp.text();
+        let data = null;
+        try {
+            data = JSON.parse(txt);
+        } catch (e) {
+            data = { errorText: txt };
+        }
+        if (resp.ok) {
+            alert(`Deploy started. arch=${data.arch}, binary=${data.binary}`);
+        } else {
+            const msg = data && data.error ? data.error : (data && data.errorText ? data.errorText : JSON.stringify(data));
+            alert(`Deploy failed: ${msg}`);
+            console.error('Deploy failed details:', data);
+        }
+    } catch (err) {
+        alert(`Deploy error: ${err}`);
+    } finally {
+        if (deployBtn) {
+            deployBtn.disabled = false;
+            deployBtn.textContent = 'Deploy';
+        }
+    }
+}
+
+// Check remote config existence and open modal if missing
+async function deployWithConfigCheck() {
+    if (!currentNode) { alert('Select a node first'); return; }
+    const resp = await fetch(`/api/deploy-check?nodeId=${encodeURIComponent(currentNode.nodeId)}`);
+    const data = await resp.json();
+    if (data.configExists) {
+        // proceed with deploy
+        deployCurrentNode();
+        return;
+    }
+
+    // open modal editor with template
+    const template = data.template || {};
+    openConfigModal(template);
+}
+
 // Check LiDAR connectivity
 async function checkLidar(lidarIP, buttonNum, lidarPort) {
     if (!currentNode) {
@@ -468,6 +523,8 @@ async function checkLidar(lidarIP, buttonNum, lidarPort) {
         statusDiv.textContent = 'Please select a node first';
         return;
     }
+
+
 
     const btn = document.getElementById(`lidar-btn-${buttonNum}`);
     const statusDiv = document.getElementById('lidar-status');
@@ -494,7 +551,7 @@ async function checkLidar(lidarIP, buttonNum, lidarPort) {
             statusDiv.textContent = `✓ ${data.message}`;
 
             // Start LiDAR visualization when reachable
-            startLidarVisualization(lidarIP, lidarPort);
+            startLidarVisualization(lidarIP, lidarPort, buttonNum);
         } else {
             btn.classList.add('lidar-btn-gray');
             statusDiv.className = 'lidar-status error';
@@ -539,6 +596,13 @@ function initLidarCanvas() {
         clearLidarCanvas();
     }
 }
+            const validateBtn = document.getElementById('config-validate');
+            if (validateBtn) validateBtn.addEventListener('click', validateConfigForm);
+            const addLidarBtn = document.getElementById('add-lidar');
+            if (addLidarBtn) addLidarBtn.addEventListener('click', () => {
+                const lidarList = document.getElementById('lidar-list');
+                addLidarRow(lidarList);
+            });
 
 // Clear LiDAR canvas and draw grid
 function clearLidarCanvas() {
@@ -655,7 +719,7 @@ function renderLidarPoints(points) {
 }
 
 // Start LiDAR visualization
-function startLidarVisualization(lidarIP, lidarPort) {
+function startLidarVisualization(lidarIP, lidarPort, lidarID) {
     if (!currentNode) {
         alert('Please select a node first');
         return;
@@ -678,7 +742,7 @@ function startLidarVisualization(lidarIP, lidarPort) {
 
     // Connect to WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/lidar-ws?nodeId=${currentNode.nodeId}&lidarPort=${lidarPort}`;
+    const wsUrl = `${protocol}//${window.location.host}/api/lidar-ws?nodeId=${currentNode.nodeId}&lidarPort=${lidarPort}&lidarId=${lidarID}`;
 
     lidarWebSocket = new WebSocket(wsUrl);
 
@@ -730,3 +794,245 @@ function stopLidarVisualization() {
     // Clear canvas
     clearLidarCanvas();
 }
+
+// --- Config modal and editor ---
+function openConfigModal(templateObj) {
+    const modal = document.getElementById('config-modal');
+    populateConfigForm(templateObj);
+    modal.style.display = 'flex';
+}
+
+function hideConfigModal() {
+    const modal = document.getElementById('config-modal');
+    modal.style.display = 'none';
+}
+
+function createLidarCard(lidar, index) {
+    const card = document.createElement('div');
+    card.className = 'lidar-card';
+    card.dataset.index = index;
+
+    const header = document.createElement('div');
+    header.className = 'lidar-card-header';
+    const title = document.createElement('h5');
+    title.textContent = `LiDAR ${lidar.LidarID || index + 1}`;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-secondary';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', () => {
+        card.remove();
+        refreshLidarTitles();
+    });
+    header.appendChild(title);
+    header.appendChild(removeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'lidar-card-body';
+    body.innerHTML = `
+        <label>Lidar ID <input class="lidar-id" type="text" value="${escapeHtml(String(lidar.LidarID || ''))}" placeholder="1"></label>
+        <label>Port <input class="lidar-port" type="text" value="${escapeHtml(String(lidar.Port || '6008'))}" placeholder="6008"></label>
+        <label>IP Address <input class="lidar-ip" type="text" value="${escapeHtml(String(lidar.IpAddress || lidar.IPAddress || '192.168.80.6'))}" placeholder="192.168.80.6"></label>
+        <div class="lidar-actions"></div>
+    `;
+
+    const laneList = document.createElement('div');
+    laneList.className = 'lane-list';
+    const laneHeader = document.createElement('div');
+    laneHeader.className = 'section-heading';
+    laneHeader.innerHTML = '<h5>Lane Vec</h5>';
+    const addLaneBtn = document.createElement('button');
+    addLaneBtn.type = 'button';
+    addLaneBtn.className = 'btn btn-small btn-success';
+    addLaneBtn.textContent = 'Add Lane';
+    addLaneBtn.addEventListener('click', () => addLaneRow(laneList));
+    laneHeader.appendChild(addLaneBtn);
+    card.appendChild(header);
+    card.appendChild(body);
+    card.appendChild(laneHeader);
+    card.appendChild(laneList);
+
+    if (Array.isArray(lidar.LaneVec) && lidar.LaneVec.length) {
+        lidar.LaneVec.forEach(lane => addLaneRow(laneList, lane));
+    } else {
+        addLaneRow(laneList);
+    }
+
+    return card;
+}
+
+function refreshLidarTitles() {
+    document.querySelectorAll('.lidar-card').forEach((card, index) => {
+        const title = card.querySelector('.lidar-card-header h5');
+        const idInput = card.querySelector('.lidar-id');
+        title.textContent = `LiDAR ${idInput.value || index + 1}`;
+    });
+}
+
+function addLaneRow(laneList, lane = {}) {
+    const row = document.createElement('div');
+    row.className = 'lane-row';
+    row.innerHTML = `
+        <input class="lane-num" type="number" min="1" value="${escapeHtml(String(lane.LaneNum || lane.LaneNum === 0 ? lane.LaneNum : ''))}" placeholder="LaneNum">
+        <input class="lane-min" type="number" step="0.1" value="${escapeHtml(String(lane.LaneMinCoord || lane.LaneMinCoord === 0 ? lane.LaneMinCoord : ''))}" placeholder="LaneMinCoord">
+        <input class="lane-max" type="number" step="0.1" value="${escapeHtml(String(lane.LaneMaxCoord || lane.LaneMaxCoord === 0 ? lane.LaneMaxCoord : ''))}" placeholder="LaneMaxCoord">
+        <button type="button" class="btn btn-secondary">Remove</button>
+    `;
+    const removeBtn = row.querySelector('button');
+    removeBtn.addEventListener('click', () => row.remove());
+    laneList.appendChild(row);
+}
+
+function addLidarRow(lidarList, lidar = {LidarID: '', Port: '6008', IpAddress: '192.168.80.6', LaneVec: [{LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0}]}) {
+    const index = lidarList.querySelectorAll('.lidar-card').length;
+    lidarList.appendChild(createLidarCard(lidar, index));
+}
+
+function populateConfigForm(templateObj) {
+    const serverPort = document.getElementById('server-port');
+    const serverIp = document.getElementById('server-ip');
+    const projectNum = document.getElementById('project-num');
+    const projectName = document.getElementById('project-name');
+    const lidarList = document.getElementById('lidar-list');
+
+    serverPort.value = templateObj.Server?.Port || templateObj.Server?.Port || '';
+    serverIp.value = templateObj.Server?.IpAddress || templateObj.Server?.IPAddress || '';
+    projectNum.value = templateObj.Project?.ProjectNum || '';
+    projectName.value = templateObj.Project?.ProjectName || '';
+
+    lidarList.innerHTML = '';
+    const lids = Array.isArray(templateObj.LidarTypeVec) ? templateObj.LidarTypeVec : [];
+    if (!lids.length) {
+        lids.push({LidarID: '1', Port: '6008', IpAddress: '192.168.80.6', LaneVec: [{LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0}]});
+        lids.push({LidarID: '2', Port: '6008', IpAddress: '192.168.80.7', LaneVec: [{LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0}]});
+    }
+    lids.forEach((lidar, index) => {
+        lidarList.appendChild(createLidarCard(lidar, index));
+    });
+}
+
+function getConfigFromForm() {
+    const serverPort = document.getElementById('server-port').value.trim();
+    const serverIp = document.getElementById('server-ip').value.trim();
+    const projectNum = document.getElementById('project-num').value.trim();
+    const projectName = document.getElementById('project-name').value.trim();
+    const lidarList = document.getElementById('lidar-list');
+
+    const config = {
+        Server: {
+            Port: serverPort,
+            IpAddress: serverIp,
+        },
+        Project: {
+            ProjectNum: projectNum ? Number(projectNum) : 1,
+            ProjectName: projectName,
+        },
+        LidarTypeVec: [],
+    };
+
+    lidarList.querySelectorAll('.lidar-card').forEach(card => {
+        const id = card.querySelector('.lidar-id').value.trim();
+        const port = card.querySelector('.lidar-port').value.trim();
+        const ip = card.querySelector('.lidar-ip').value.trim();
+        const lanes = [];
+        card.querySelectorAll('.lane-row').forEach(row => {
+            const laneNum = row.querySelector('.lane-num').value.trim();
+            const laneMin = row.querySelector('.lane-min').value.trim();
+            const laneMax = row.querySelector('.lane-max').value.trim();
+            if (!laneNum && !laneMin && !laneMax) {
+                return;
+            }
+            lanes.push({
+                LaneNum: laneNum ? Number(laneNum) : 0,
+                LaneMinCoord: laneMin ? Number(laneMin) : 0,
+                LaneMaxCoord: laneMax ? Number(laneMax) : 0,
+            });
+        });
+        if (id || port || ip || lanes.length) {
+            config.LidarTypeVec.push({
+                LidarID: id || '',
+                Port: port || '',
+                IpAddress: ip || '',
+                LaneVec: lanes,
+            });
+        }
+    });
+    return config;
+}
+
+function validateConfigForm() {
+    try {
+        const config = getConfigFromForm();
+        if (!config.Server.Port || !config.Server.IpAddress) {
+            alert('Server port and IP address are required.');
+            return false;
+        }
+        if (!config.Project.ProjectName) {
+            alert('Project name is required.');
+            return false;
+        }
+        if (!config.LidarTypeVec.length) {
+            alert('At least one LiDAR entry is required.');
+            return false;
+        }
+        for (const lidar of config.LidarTypeVec) {
+            if (!lidar.LidarID || !lidar.Port || !lidar.IpAddress) {
+                alert('Each LiDAR requires ID, port, and IP address.');
+                return false;
+            }
+            if (!Array.isArray(lidar.LaneVec) || !lidar.LaneVec.length) {
+                alert(`LiDAR ${lidar.LidarID} requires at least one lane entry.`);
+                return false;
+            }
+        }
+        return true;
+    } catch (e) {
+        alert('Invalid configuration: ' + e);
+        return false;
+    }
+}
+
+async function saveAndUploadConfig() {
+    if (!currentNode) { alert('Select a node first'); return; }
+    if (!validateConfigForm()) {
+        return;
+    }
+    const config = getConfigFromForm();
+    const body = JSON.stringify(config, null, 2);
+    try {
+        const resp = await fetch(`/api/deploy-config?nodeId=${encodeURIComponent(currentNode.nodeId)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body,
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert('Config uploaded successfully');
+            hideConfigModal();
+            deployCurrentNode();
+        } else {
+            alert('Upload failed: ' + JSON.stringify(data));
+        }
+    } catch (err) {
+        alert('Upload error: ' + err);
+    }
+}
+
+// Wire modal buttons after DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = document.getElementById('config-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', hideConfigModal);
+    const cancelBtn = document.getElementById('config-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', hideConfigModal);
+    const validateBtn = document.getElementById('config-validate');
+    if (validateBtn) validateBtn.addEventListener('click', validateConfigForm);
+    const addLidarBtn = document.getElementById('add-lidar');
+    if (addLidarBtn) addLidarBtn.addEventListener('click', () => {
+        const lidarList = document.getElementById('lidar-list');
+        addLidarRow(lidarList);
+    });
+    const saveBtn = document.getElementById('config-save');
+    if (saveBtn) saveBtn.addEventListener('click', saveAndUploadConfig);
+});
