@@ -78,7 +78,9 @@ func main() {
 	http.HandleFunc("/api/lidar-ws", lidarWebSocketHandler)
 	http.HandleFunc("/api/deploy", deployHandler)
 	http.HandleFunc("/api/deploy-check", deployCheckHandler)
+	http.HandleFunc("/api/load-remote-config", loadRemoteConfigHandler)
 	http.HandleFunc("/api/deploy-config", deployConfigHandler)
+	http.HandleFunc("/api/restart-remote-server", restartRemoteServerHandler)
 
 	log.Println("Server starting on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -498,6 +500,167 @@ func deployConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func loadRemoteConfigHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.URL.Query().Get("nodeId")
+	if nodeID == "" {
+		http.Error(w, "nodeId required", http.StatusBadRequest)
+		return
+	}
+
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+	if targetNode == nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User:            targetNode.Username,
+		Auth:            []ssh.AuthMethod{ssh.Password(targetNode.Password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	sshClient, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("SSH dial failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sshClient.Close()
+
+	sess, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sess.Close()
+
+	cmd := "cat /home/pi/lidarSystem/config.json"
+	out, err := sess.CombinedOutput(cmd)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"config": json.RawMessage(out)})
+}
+
+func restartRemoteServerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	nodeID := r.URL.Query().Get("nodeId")
+	if nodeID == "" {
+		http.Error(w, "nodeId required", http.StatusBadRequest)
+		return
+	}
+
+	configLock.RLock()
+	var targetNode *Node
+	for _, group := range config.Groups {
+		for _, node := range group.Nodes {
+			if node.NodeID == nodeID {
+				targetNode = &node
+				break
+			}
+		}
+		if targetNode != nil {
+			break
+		}
+	}
+	configLock.RUnlock()
+	if targetNode == nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read body failed: %v", err), http.StatusBadRequest)
+		return
+	}
+	var v interface{}
+	if err := json.Unmarshal(body, &v); err != nil {
+		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User:            targetNode.Username,
+		Auth:            []ssh.AuthMethod{ssh.Password(targetNode.Password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	sshClient, err := ssh.Dial("tcp", targetNode.IP+":22", sshConfig)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("SSH dial failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sshClient.Close()
+
+	sess, _ := sshClient.NewSession()
+	_ = sess.Run("mkdir -p /home/pi/lidarSystem")
+	sess.Close()
+
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("sftp failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sftpClient.Close()
+
+	f, err := sftpClient.Create("/home/pi/lidarSystem/config.json")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("create failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if _, err := f.Write(body); err != nil {
+		f.Close()
+		http.Error(w, fmt.Sprintf("write failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	f.Close()
+
+	sess2, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sess2.Close()
+	cmd := `pkill -f screen || true && screen -wipe || true && screen -S remoteServer -X quit || true`
+	if err := sess2.Run(cmd); err != nil {
+		log.Printf("remote stop returned: %v", err)
+	}
+
+	sess3, err := sshClient.NewSession()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("session failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer sess3.Close()
+	startCmd := `cd /home/pi/lidarSystem && screen -S remoteServer -dm ./remoteServer > remoteServer.log 2>&1`
+	if err := sess3.Run(startCmd); err != nil {
+		http.Error(w, fmt.Sprintf("failed to start remote server: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -1416,6 +1579,10 @@ const indexHTML = `<!DOCTYPE html>
                                 <p>Test connectivity from edge box to LiDAR devices (192.168.80.x network)</p>
                             </div>
                             <div class="lidar-buttons">
+				<button id="load-config-btn" class="lidar-btn lidar-btn-secondary" onclick="loadRemoteConfig()" style="margin-right: 12px;">
+					<span class="lidar-btn-icon">⚙️</span>
+					<span class="lidar-btn-label">Load Remote Config</span>
+				</button>
 								<button id="deploy-btn" class="lidar-btn lidar-btn-deploy" onclick="deployWithConfigCheck()">
 									<span class="lidar-btn-icon">⬆️</span>
 									<span class="lidar-btn-label">Deploy</span>

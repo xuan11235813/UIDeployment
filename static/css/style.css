@@ -313,81 +313,83 @@ header p {
     padding: 6px 10px;
     border-bottom: 1px solid #333;
     flex-shrink: 0;
-}
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 
-.panel-header h2 {
-    font-size: 0.85em;
-}
+    .panel-header h2 {
+        font-size: 0.85em;
+    }
 
-#terminal-container {
-    background: #0a0a0a;
-    border-radius: 6px;
-    flex: 1;
-    margin: 6px;
-    overflow: hidden;
-    border: 1px solid #333;
-    padding: 4px;
-    min-height: 0;
-}
+    #terminal-container {
+        background: #0a0a0a;
+        border-radius: 6px;
+        flex: 1;
+        margin: 6px;
+        overflow: hidden;
+        border: 1px solid #333;
+        padding: 4px;
+        min-height: 0;
+    }
 
-#terminal-container .xterm {
-    height: 100%;
-}
+    #terminal-container .xterm {
+        height: 100%;
+    }
 
-#terminal-container .xterm-viewport {
-    overflow-y: auto !important;
-}
+    #terminal-container .xterm-viewport {
+        overflow-y: auto !important;
+    }
 
-.file-manager {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    margin: 6px;
-    min-height: 0;
-}
+    .file-manager {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        margin: 6px;
+        min-height: 0;
+    }
 
-.file-browser {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 6px;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
+    .file-browser {
+        flex: 1;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
 
-.path-bar {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 6px;
-    flex-shrink: 0;
-}
+    .path-bar {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+        flex-shrink: 0;
+    }
 
-.path-bar input {
-    flex: 1;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid #333;
-    border-radius: 4px;
-    color: #fff;
-    font-size: 0.75em;
-}
+    .path-bar input {
+        flex: 1;
+        padding: 5px 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid #333;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 0.75em;
+    }
 
-.path-bar input:focus {
-    outline: none;
-    border-color: #00d4ff;
-}
+    .path-bar input:focus {
+        outline: none;
+        border-color: #00d4ff;
+    }
 
-#file-list {
-    flex: 1;
-    overflow-y: auto;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    padding: 5px;
-    min-height: 0;
-}
+    #file-list {
+        flex: 1;
+        overflow-y: auto;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 4px;
+        padding: 5px;
+        min-height: 0;
+    }
 
-.file-item {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     display: flex;
     align-items: center;
     padding: 5px 8px;
@@ -751,8 +753,9 @@ header p {
     height: 100%;
     background: rgba(0, 0, 0, 0.6);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    padding: 20px 0;
     z-index: 9999;
 }
 
@@ -761,9 +764,17 @@ header p {
     border-radius: 8px;
     width: 90%;
     max-width: 1000px;
+    max-height: 90vh;
     padding: 12px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
     color: #eaeef6;
+    overflow: hidden;
+}
+
+.modal-body {
+    overflow-y: auto;
+    max-height: calc(90vh - 120px);
+    padding-right: 6px;
 }
 
 .modal-header {
@@ -783,11 +794,13 @@ header p {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
-    padding: 12px;
+    padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
+
+/* merged duplicate config-section rule */
 
 .config-section h4 {
     margin-bottom: 8px;
@@ -855,7 +868,7 @@ header p {
 
 .lidar-card-body {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
 }
 
@@ -868,7 +881,7 @@ header p {
 
 .lane-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 8px;
     align-items: center;
 }

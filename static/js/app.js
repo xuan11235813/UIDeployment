@@ -596,13 +596,13 @@ function initLidarCanvas() {
         clearLidarCanvas();
     }
 }
-            const validateBtn = document.getElementById('config-validate');
-            if (validateBtn) validateBtn.addEventListener('click', validateConfigForm);
-            const addLidarBtn = document.getElementById('add-lidar');
-            if (addLidarBtn) addLidarBtn.addEventListener('click', () => {
-                const lidarList = document.getElementById('lidar-list');
-                addLidarRow(lidarList);
-            });
+const validateBtn = document.getElementById('config-validate');
+if (validateBtn) validateBtn.addEventListener('click', validateConfigForm);
+const addLidarBtn = document.getElementById('add-lidar');
+if (addLidarBtn) addLidarBtn.addEventListener('click', () => {
+    const lidarList = document.getElementById('lidar-list');
+    addLidarRow(lidarList);
+});
 
 // Clear LiDAR canvas and draw grid
 function clearLidarCanvas() {
@@ -796,15 +796,76 @@ function stopLidarVisualization() {
 }
 
 // --- Config modal and editor ---
-function openConfigModal(templateObj) {
+function openConfigModal(templateObj, mode = 'deploy') {
     const modal = document.getElementById('config-modal');
     populateConfigForm(templateObj);
+    configModalMode = mode;
+    const saveBtn = document.getElementById('config-save');
+    if (saveBtn) {
+        saveBtn.textContent = mode === 'restart' ? 'Restart' : 'Save & Upload';
+    }
     modal.style.display = 'flex';
 }
 
 function hideConfigModal() {
     const modal = document.getElementById('config-modal');
     modal.style.display = 'none';
+}
+
+let configModalMode = 'deploy';
+
+async function handleConfigAction() {
+    if (configModalMode === 'restart') {
+        await restartRemoteServerWithConfig();
+    } else {
+        await saveAndUploadConfig();
+    }
+}
+
+async function loadRemoteConfig() {
+    if (!currentNode) {
+        alert('Select a node first');
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/load-remote-config?nodeId=${encodeURIComponent(currentNode.nodeId)}`);
+        const data = await resp.json();
+        if (!resp.ok) {
+            alert(`Failed to load remote config: ${data.error || resp.statusText}`);
+            return;
+        }
+        const config = data.config || {};
+        openConfigModal(config, 'restart');
+    } catch (err) {
+        alert(`Load remote config error: ${err}`);
+    }
+}
+
+async function restartRemoteServerWithConfig() {
+    if (!currentNode) { alert('Select a node first'); return; }
+    if (!validateConfigForm()) {
+        return;
+    }
+    const config = getConfigFromForm();
+    const body = JSON.stringify(config, null, 2);
+    try {
+        const resp = await fetch(`/api/restart-remote-server?nodeId=${encodeURIComponent(currentNode.nodeId)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body,
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert('Remote server restarted successfully');
+            hideConfigModal();
+        } else {
+            alert('Restart failed: ' + JSON.stringify(data));
+        }
+    } catch (err) {
+        alert('Restart error: ' + err);
+    }
 }
 
 function createLidarCard(lidar, index) {
@@ -883,7 +944,7 @@ function addLaneRow(laneList, lane = {}) {
     laneList.appendChild(row);
 }
 
-function addLidarRow(lidarList, lidar = {LidarID: '', Port: '6008', IpAddress: '192.168.80.6', LaneVec: [{LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0}]}) {
+function addLidarRow(lidarList, lidar = { LidarID: '', Port: '6008', IpAddress: '192.168.80.6', LaneVec: [{ LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0 }] }) {
     const index = lidarList.querySelectorAll('.lidar-card').length;
     lidarList.appendChild(createLidarCard(lidar, index));
 }
@@ -903,8 +964,8 @@ function populateConfigForm(templateObj) {
     lidarList.innerHTML = '';
     const lids = Array.isArray(templateObj.LidarTypeVec) ? templateObj.LidarTypeVec : [];
     if (!lids.length) {
-        lids.push({LidarID: '1', Port: '6008', IpAddress: '192.168.80.6', LaneVec: [{LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0}]});
-        lids.push({LidarID: '2', Port: '6008', IpAddress: '192.168.80.7', LaneVec: [{LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0}]});
+        lids.push({ LidarID: '1', Port: '6008', IpAddress: '192.168.80.6', LaneVec: [{ LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0 }] });
+        lids.push({ LidarID: '2', Port: '6008', IpAddress: '192.168.80.7', LaneVec: [{ LaneNum: 1, LaneMinCoord: -4.0, LaneMaxCoord: 4.0 }] });
     }
     lids.forEach((lidar, index) => {
         lidarList.appendChild(createLidarCard(lidar, index));
@@ -1034,5 +1095,5 @@ document.addEventListener('DOMContentLoaded', () => {
         addLidarRow(lidarList);
     });
     const saveBtn = document.getElementById('config-save');
-    if (saveBtn) saveBtn.addEventListener('click', saveAndUploadConfig);
+    if (saveBtn) saveBtn.addEventListener('click', handleConfigAction);
 });
