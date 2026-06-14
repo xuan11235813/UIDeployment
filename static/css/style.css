@@ -299,6 +299,7 @@ header p {
 #file-panel {
     flex: 1 1 45%;
     min-height: 180px;
+    overflow: auto;
 }
 
 /* LiDAR panel in Tab 2 */
@@ -307,89 +308,90 @@ header p {
 }
 
 .panel-header {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     justify-content: space-between;
     align-items: center;
     padding: 6px 10px;
     border-bottom: 1px solid #333;
     flex-shrink: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
 
-    .panel-header h2 {
-        font-size: 0.85em;
-    }
+.panel-header h2 {
+    font-size: 0.85em;
+}
 
-    #terminal-container {
-        background: #0a0a0a;
-        border-radius: 6px;
-        flex: 1;
-        margin: 6px;
-        overflow: hidden;
-        border: 1px solid #333;
-        padding: 4px;
-        min-height: 0;
-    }
+#terminal-container {
+    background: #0a0a0a;
+    border-radius: 6px;
+    flex: 1;
+    margin: 6px;
+    overflow: hidden;
+    border: 1px solid #333;
+    padding: 4px;
+    min-height: 0;
+}
 
-    #terminal-container .xterm {
-        height: 100%;
-    }
+#terminal-container .xterm {
+    height: 100%;
+}
 
-    #terminal-container .xterm-viewport {
-        overflow-y: auto !important;
-    }
+#terminal-container .xterm-viewport {
+    overflow-y: auto !important;
+}
 
-    .file-manager {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        margin: 6px;
-        min-height: 0;
-    }
+.file-manager {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin: 6px;
+    min-height: 0;
+    overflow: hidden;
+}
 
-    .file-browser {
-        flex: 1;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 6px;
-        padding: 6px;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-    }
+.file-browser {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
 
-    .path-bar {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 6px;
-        flex-shrink: 0;
-    }
+.path-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
 
-    .path-bar input {
-        flex: 1;
-        padding: 5px 8px;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid #333;
-        border-radius: 4px;
-        color: #fff;
-        font-size: 0.75em;
-    }
+.path-bar input {
+    flex: 1;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.75em;
+}
 
-    .path-bar input:focus {
-        outline: none;
-        border-color: #00d4ff;
-    }
+.path-bar input:focus {
+    outline: none;
+    border-color: #00d4ff;
+}
 
-    #file-list {
-        flex: 1;
-        overflow-y: auto;
-        background: rgba(0, 0, 0, 0.2);
-        border-radius: 4px;
-        padding: 5px;
-        min-height: 0;
-    }
+#file-list {
+    flex: 1;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 5px;
+    min-height: 0;
+}
 
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+.file-item {
     display: flex;
     align-items: center;
     padding: 5px 8px;
@@ -553,7 +555,7 @@ header p {
 .lidar-buttons {
     display: flex;
     justify-content: center;
-    gap: 15px;
+    gap: 6px;
     flex-wrap: wrap;
 }
 
@@ -562,31 +564,17 @@ header p {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 15px 25px;
+    padding: 6px 10px;
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    min-width: 140px;
-    gap: 5px;
-}
-
-.lidar-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-.lidar-btn-icon {
-    font-size: 1.8em;
-}
-
-.lidar-btn-label {
-    font-size: 0.95em;
-    font-weight: 600;
+    transition: all 0.2s ease;
+    min-width: 80px;
+    gap: 3px;
 }
 
 .lidar-btn-ip {
-    font-size: 0.75em;
+    font-size: 0.65em;
     opacity: 0.8;
 }
 
