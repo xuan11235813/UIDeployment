@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -23,13 +26,14 @@ import (
 
 // Node represents a single lidar device node
 type Node struct {
-	IP           string `json:"IP"`
-	Username     string `json:"Username"`
-	Password     string `json:"Password"`
-	ExeDirectory string `json:"exeDirectory"`
-	NodeID       string `json:"nodeId"`
-	Description  string `json:"description"`
-	Client       string `json:"client"`
+	IP            string   `json:"IP"`
+	Username      string   `json:"Username"`
+	Password      string   `json:"Password"`
+	ExeDirectory  string   `json:"exeDirectory"`
+	NodeID        string   `json:"nodeId"`
+	Description   string   `json:"description"`
+	Client        string   `json:"client"`
+	RelatedCamera []string `json:"relatedCamera,omitempty"`
 }
 
 // NodeGroup represents a group of nodes from a JSON file
@@ -76,6 +80,7 @@ func main() {
 	http.HandleFunc("/api/list", listFilesHandler)
 	http.HandleFunc("/api/check-lidar", checkLidarHandler)
 	http.HandleFunc("/api/lidar-ws", lidarWebSocketHandler)
+	http.HandleFunc("/api/camera-stream", cameraStreamHandler)
 	http.HandleFunc("/api/deploy", deployHandler)
 	http.HandleFunc("/api/deploy-check", deployCheckHandler)
 	http.HandleFunc("/api/load-remote-config", loadRemoteConfigHandler)
@@ -114,6 +119,72 @@ func loadConfig() error {
 	})
 
 	return nil
+}
+
+func cameraStreamHandler(w http.ResponseWriter, r *http.Request) {
+	ip := r.URL.Query().Get("ip")
+	if ip == "" {
+		http.Error(w, "ip parameter required", http.StatusBadRequest)
+		return
+	}
+
+	transport := strings.ToLower(r.URL.Query().Get("transport"))
+	if transport != "udp" {
+		transport = "tcp"
+	}
+
+	rtspURL := fmt.Sprintf("rtsp://%s:8557/h264", ip)
+	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=ffmpeg")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "close")
+
+	flusher, ok := w.(http.Flusher)
+	if ok {
+		flusher.Flush()
+	}
+
+	if err := streamCameraWithTransport(r.Context(), w, rtspURL, transport); err != nil {
+		log.Printf("camera stream %s failed for %s: %v", transport, ip, err)
+	}
+}
+
+func streamCameraWithTransport(ctx context.Context, w http.ResponseWriter, rtspURL, transport string) error {
+	boundaryTag := "ffmpeg"
+	args := []string{
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-rtsp_transport", transport,
+		"-timeout", "5000000",
+		"-fflags", "+genpts+discardcorrupt",
+		"-flags", "low_delay",
+		"-max_delay", "200000",
+		"-err_detect", "ignore_err",
+		"-probesize", "1000000",
+		"-analyzeduration", "1000000",
+		"-i", rtspURL,
+		"-an",
+		"-c:v", "mjpeg",
+		"-q:v", "5",
+		"-r", "10",
+		"-boundary_tag", boundaryTag,
+		"-f", "mpjpeg",
+		"-",
+	}
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd.Stdout = w
+	stderrBuf := &bytes.Buffer{}
+	cmd.Stderr = stderrBuf
+
+	err := cmd.Run()
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		log.Printf("ffmpeg camera proxy failed: %v; stderr=%s", err, stderrBuf.String())
+	}
+
+	return err
 }
 
 // getConfigPath tries to find the config file in multiple locations
@@ -393,7 +464,7 @@ func deployCheckHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if resp["template"] == nil {
 			resp["template"] = map[string]interface{}{
-				"Server": map[string]string{"Port": "6008", "IpAddress": "0.0.0.0"},
+				"Server":  map[string]string{"Port": "6008", "IpAddress": "0.0.0.0"},
 				"Project": map[string]interface{}{"ProjectNum": 1, "ProjectName": "MyProject"},
 				"LidarTypeVec": []map[string]interface{}{
 					{"LidarID": "1", "Port": "6008", "IpAddress": "192.168.80.6", "LaneVec": []map[string]interface{}{{"LaneNum": 1, "LaneMinCoord": -4.0, "LaneMaxCoord": 4.0}}},
@@ -713,16 +784,32 @@ func loadNodesFromFile(filename string) ([]Node, error) {
 	}
 	defer file.Close()
 
-	var data struct {
-		Nodes []Node `json:"Nodes"`
-	}
-
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&data); err != nil {
+	data, err := io.ReadAll(file)
+	if err != nil {
 		return nil, err
 	}
 
-	return data.Nodes, nil
+	// Try object wrapper formats first: "Nodes" or "nodes".
+	var wrapper struct {
+		Nodes      []Node `json:"Nodes"`
+		NodesLower []Node `json:"nodes"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err == nil {
+		if wrapper.Nodes != nil {
+			return wrapper.Nodes, nil
+		}
+		if wrapper.NodesLower != nil {
+			return wrapper.NodesLower, nil
+		}
+	}
+
+	// Try plain array format for compatibility.
+	var nodes []Node
+	if err := json.Unmarshal(data, &nodes); err == nil {
+		return nodes, nil
+	}
+
+	return nil, fmt.Errorf("invalid node config format in %s", filename)
 }
 
 // indexHandler serves the main HTML page
@@ -1616,12 +1703,23 @@ const indexHTML = `<!DOCTYPE html>
                                 <span id="lidar-frame-counter" class="lidar-frame-counter">Frames: 0</span>
                             </div>
                         </div>
-                        <div class="lidar-canvas-container">
-                            <canvas id="lidar-canvas" width="800" height="400"></canvas>
-                        </div>
-                        <div class="lidar-canvas-info">
-                            <span>Range: X [-20, 20] m | Y [-10, 10] m</span>
-                            <span id="lidar-point-count">Points: 0</span>
+                        <div class="lidar-visualization-body">
+                            <div class="lidar-canvas-panel">
+                                <div class="lidar-canvas-container">
+                                    <canvas id="lidar-canvas" width="800" height="400"></canvas>
+                                </div>
+                                <div class="lidar-canvas-info">
+                                    <span>Range: X [-20, 20] m | Y [-10, 10] m</span>
+                                    <span id="lidar-point-count">Points: 0</span>
+                                </div>
+                            </div>
+                            <div id="camera-panel" class="camera-panel hidden">
+                                <div class="camera-panel-header">
+                                    <h3>Related Cameras</h3>
+                                    <span id="camera-panel-info">0 cameras</span>
+                                </div>
+                                <div id="camera-grid" class="camera-grid"></div>
+                            </div>
                         </div>
                     </div>
                 </div>

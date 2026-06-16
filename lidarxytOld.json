@@ -1,0 +1,256 @@
+{
+    "Nodes": [
+        {
+            "IP": "10.60.8.54",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "1",
+            "description": "蕰川公路宝安公路 激光建模单元 东进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.55",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "2",
+            "description": "蕰川公路宝安公路 智能终端 东进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.66",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "3",
+            "description": "蕰川公路宝安公路 激光建模单元 西进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.67",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "4",
+            "description": "蕰川公路宝安公路 智能终端 西进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.75",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "5",
+            "description": "蕰川公路宝安公路 激光建模单元 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.76",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "6",
+            "description": "蕰川公路宝安公路 智能终端 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.85",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "7",
+            "description": "蕰川公路宝安公路 激光建模单元 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.86",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "8",
+            "description": "蕰川公路宝安公路 智能终端 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.64.89",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "9",
+            "description": "蕰川公路G1503 激光建模单元 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.64.90",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "10",
+            "description": "蕰川公路G1503 智能终端 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.118",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "11",
+            "description": "蕰川公路G1503 激光建模单元 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.8.119",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "12",
+            "description": "蕰川公路G1503 智能终端 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.198",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "13",
+            "description": "宝安公路S7 激光建模单元 东进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.199",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "14",
+            "description": "宝安公路S7 智能终端 东进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.208",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "15",
+            "description": "宝安公路S7 激光建模单元 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.209",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "16",
+            "description": "宝安公路S7 智能终端 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.213",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "17",
+            "description": "宝安公路S7 激光建模单元 西进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.214",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "18",
+            "description": "宝安公路S7 智能终端 西进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.224",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "19",
+            "description": "宝安公路S7 激光建模单元 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.24.225",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "20",
+            "description": "宝安公路S7 智能终端 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.11",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "21",
+            "description": "宝安公路沪太公路 激光建模单元 东进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.12",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "22",
+            "description": "宝安公路沪太公路 智能终端 东进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.19",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "23",
+            "description": "宝安公路沪太公路 激光建模单元 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.20",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "24",
+            "description": "宝安公路沪太公路 智能终端 南进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.27",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "25",
+            "description": "宝安公路沪太公路 激光建模单元 西进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.28",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "26",
+            "description": "宝安公路沪太公路 智能终端 西进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.35",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "27",
+            "description": "宝安公路沪太公路 激光建模单元 北进口",
+            "client": "新宇通"
+        },
+        {
+            "IP": "10.60.9.36",
+            "Username": "pi",
+            "Password": "dabingkuaizi",
+            "exeDirectory": "~",
+            "nodeId": "28",
+            "description": "宝安公路沪太公路 智能终端 北进口",
+            "client": "新宇通"
+        }
+    ]
+}

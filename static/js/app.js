@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupUploadForm();
     initTerminal();
     initLidarCanvas();
+    initCameraPanel();
 });
 
 // Switch between tabs
@@ -206,6 +207,103 @@ function findNode(nodeId) {
     return null;
 }
 
+// Initialize camera preview panel
+function initCameraPanel() {
+    renderCameraGrid([]);
+}
+
+// Render the related camera grid
+function renderCameraGrid(relatedCameras) {
+    const cameraPanel = document.getElementById('camera-panel');
+    const cameraGrid = document.getElementById('camera-grid');
+    const cameraInfo = document.getElementById('camera-panel-info');
+
+    if (!cameraPanel || !cameraGrid || !cameraInfo) {
+        return;
+    }
+
+    cameraGrid.innerHTML = '';
+
+    if (!relatedCameras || relatedCameras.length === 0) {
+        cameraPanel.classList.add('hidden');
+        cameraInfo.textContent = '0 cameras';
+        return;
+    }
+
+    cameraPanel.classList.remove('hidden');
+    cameraInfo.textContent = `${relatedCameras.length} camera${relatedCameras.length === 1 ? '' : 's'}`;
+
+    const columns = relatedCameras.length > 4 ? 3 : 2;
+    cameraGrid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+
+    relatedCameras.forEach((ip) => {
+        const cell = document.createElement('div');
+        cell.className = 'camera-cell';
+        cell.dataset.active = 'false';
+        cell.dataset.ip = ip;
+        cell.innerHTML = `
+            <div class="camera-window"></div>
+            <div class="camera-ip">${escapeHtml(ip)}</div>
+        `;
+
+        cell.addEventListener('click', () => {
+            toggleCameraWindow(cell, ip);
+        });
+
+        cameraGrid.appendChild(cell);
+    });
+}
+
+function toggleCameraWindow(cell, ip) {
+    const windowDiv = cell.querySelector('.camera-window');
+    if (!windowDiv) return;
+
+    const isActive = cell.dataset.active === 'true';
+
+    if (isActive) {
+        windowDiv.innerHTML = '';
+        windowDiv.classList.remove('active');
+        cell.dataset.active = 'false';
+        return;
+    }
+
+    const img = document.createElement('img');
+    img.className = 'camera-video';
+    img.alt = `Camera ${ip}`;
+    img.dataset.transport = 'tcp';
+    img.dataset.fallbackAttempted = 'false';
+    img.addEventListener('error', () => handleCameraLoadError(img, ip));
+    img.addEventListener('load', () => {
+        img.dataset.fallbackAttempted = 'false';
+    });
+
+    setCameraImageSrc(img, ip, 'tcp');
+
+    windowDiv.innerHTML = '';
+    windowDiv.appendChild(img);
+    windowDiv.classList.add('active');
+    cell.dataset.active = 'true';
+}
+
+function setCameraImageSrc(img, ip, transport) {
+    img.dataset.transport = transport;
+    img.src = `/api/camera-stream?ip=${encodeURIComponent(ip)}&transport=${transport}&_=${Date.now()}`;
+}
+
+function handleCameraLoadError(img, ip) {
+    if (img.dataset.transport === 'tcp' && img.dataset.fallbackAttempted === 'false') {
+        img.dataset.fallbackAttempted = 'true';
+        setCameraImageSrc(img, ip, 'udp');
+        return;
+    }
+
+    const windowDiv = img.closest('.camera-window');
+    if (windowDiv) {
+        windowDiv.innerHTML = '<div class="camera-error">No video available</div>';
+        windowDiv.classList.remove('active');
+    }
+}
+
 // Select a node and connect to it
 function selectNode(nodeId) {
     const node = findNode(nodeId);
@@ -239,6 +337,9 @@ function selectNode(nodeId) {
 
     // Reset LiDAR buttons
     resetLidarButtons();
+
+    // Render related cameras, if present
+    renderCameraGrid(node.relatedCamera || []);
 }
 
 // Connect SSH terminal using xterm.js
